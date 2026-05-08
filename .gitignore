@@ -1,0 +1,18 @@
+#general files for mac
+.DS_Store
+.xml
+.claude
+
+__pycache__/
+
+#png and svg files
+*.png
+*.svg
+*.jpg
+
+#also the .idea folder
+.idea
+#and the vscode folder
+.vscode
+#and the pytest cache
+.pytest_cache
