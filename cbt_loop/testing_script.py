@@ -1,5 +1,6 @@
 import csv
 import os
+import traceback
 import pickle as pkl
 from pathlib import Path
 import sys
@@ -13,6 +14,8 @@ import cbt_rnn as cbtl
 import config_script as cfg
 import self_timed_movement_task as stmt
 import plotting_functions as pf
+import test_pnr
+import opto_script
 
 
 def _build_weight_matrix(params):
@@ -173,7 +176,8 @@ def _response_times_from_actions(actions, starts, t_cue, threshold=0.5):
     return response_times
 
 
-def main():
+def _load_bundle():
+    """Load params + config, rebuilding config for legacy (params-only) bundles."""
     params_path = cfg.params_path()
     if not params_path.exists():
         raise FileNotFoundError(f"Missing {params_path}. Run training_script.py first.")
@@ -182,24 +186,40 @@ def main():
         bundle = pkl.load(f)
 
     if isinstance(bundle, dict) and "params" in bundle and "config" in bundle:
-        params = bundle["params"]
-        config = bundle["config"]
-    else:
-        params = bundle
-        _, config = cbtl.init_params(
-            jr.PRNGKey(0),
-            n_c=params["J_c"].shape[0],
-            n_d1=params["J_d1"].shape[0],
-            n_d2=params["J_d2"].shape[0],
-            n_snc=params["P_snc"].shape[0],
-            n_snr=params["P_snr"].shape[0],
-            n_gpe=params["J_gpe"].shape[0],
-            n_stn=params["J_stn"].shape[0],
-            n_t=params["J_t"].shape[0],
-            n_input=1,
-            n_output=1,
-            noise_std=cfg.RNN_CONFIG["noise_std"],
-        )
+        return bundle["params"], bundle["config"]
+
+    params = bundle
+    _, config = cbtl.init_params(
+        jr.PRNGKey(0),
+        n_c=params["J_c"].shape[0],
+        n_d1=params["J_d1"].shape[0],
+        n_d2=params["J_d2"].shape[0],
+        n_snc=params["P_snc"].shape[0],
+        n_snr=params["P_snr"].shape[0],
+        n_gpe=params["J_gpe"].shape[0],
+        n_stn=params["J_stn"].shape[0],
+        n_t=params["J_t"].shape[0],
+        n_med=params["J_med_w1"].shape[0] * 2,
+        n_input=1,
+        n_output=1,
+        noise_std=cfg.RNN_CONFIG["noise_std"],
+    )
+    return params, config
+
+
+def _safe(label, fn, *args, **kwargs):
+    """Run a plotting/analysis call, logging failures instead of aborting the run."""
+    print(f"-> {label} ...")
+    try:
+        fn(*args, **kwargs)
+        print(f"   [ok] {label}")
+    except Exception as exc:  # noqa: BLE001 - we want every plot attempted
+        print(f"   [FAIL] {label}: {exc}")
+        traceback.print_exc()
+
+
+def main():
+    params, config = _load_bundle()
 
     starts = cfg.TEST_CONFIG["start_t"]
     inputs, targets, masks = _build_test_inputs(cfg.TASK_CONFIG, starts)
@@ -212,18 +232,15 @@ def main():
         n_seeds=cfg.TEST_CONFIG["n_seeds"],
     )
 
-    _save_weight_matrix(params, cfg.plots_folder)
+    # Derived quantities shared by several plots.
+    response_times = _response_times_from_actions(all_actions, starts, cfg.TASK_CONFIG["t_cue"])
+    valid_rts = response_times[~jnp.isnan(response_times)]
+    d1d2_ratio = cbtl.get_d1_d2_ratio(all_xs, 100, 300, avg_time=True, remove_outliers=False)
 
-    pf.plot_cue_algn_activity(all_xs, ys=all_ys)
-
-    # Reward proxy: any sampled first-response inside target window.
     target_2d = targets[..., 0]
     action_2d = all_actions[..., 0]
     in_target = target_2d[None, ...] > 0.5
     success = jnp.any((action_2d > 0.5) & in_target, axis=2)
-
-    response_times = _response_times_from_actions(all_actions, starts, cfg.TASK_CONFIG["t_cue"])
-    valid_rts = response_times[~jnp.isnan(response_times)]
 
     print("ys shape:", all_ys.shape)
     print("actions shape:", all_actions.shape)
@@ -234,6 +251,39 @@ def main():
         print("mean response time (s):", float(jnp.mean(valid_rts)))
     else:
         print("mean response time (s): NaN (no responses)")
+
+    # --- Weight matrix --------------------------------------------------
+    _safe("weight matrix (csv + heatmap)", _save_weight_matrix, params, cfg.plots_folder)
+
+    # --- Core activity plots -------------------------------------------
+    _safe("output activity", pf.plot_output, all_ys)
+    _safe("activity by area", pf.plot_activity_by_area, all_xs)
+    _safe("cue-aligned activity", pf.plot_cue_algn_activity, all_xs, ys=all_ys)
+    _safe("binned responses", pf.plot_binned_responses, all_ys, all_xs, None, all_actions)
+    if valid_rts.size > 0:
+        _safe("response time distributions", pf.plot_response_times, valid_rts)
+
+    # --- Correlograms ---------------------------------------------------
+    _safe("dSPN-iSPN vs SNc correlogram",
+          pf.plot_d1d2ratio_SNc_correlogram, d1d2_ratio, all_xs, response_times)
+    _safe("dSPN-iSPN vs ramp-slope correlogram",
+          pf.plot_d1d2ratio_slope_correlogram, all_xs, response_times)
+    _safe("dSPN-iSPN vs response-time correlogram",
+          pf.plot_ratio_rt_correlogram, d1d2_ratio, response_times)
+
+    # --- Static schematic plots ----------------------------------------
+    _safe("loss function schematic", pf.plot_loss_function)
+    _safe("adaptive loss function schematic", pf.plot_loss_function_adaptive)
+
+    # --- Opto experiments (plot_opto_inh / plot_opto_stim / plot_opto) --
+    _safe("opto experiments", opto_script.make_all_opto_plots, params, config,
+          120, 60)
+
+    # --- Point-of-no-return experiments (plot_binned_pnr / colorbars) ---
+    _safe("point-of-no-return experiments", test_pnr.run_pnr_experiments, params, config,
+          30)
+
+    print("Done. Plots written under", cfg.plots_folder)
 
 
 if __name__ == "__main__":

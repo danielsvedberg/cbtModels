@@ -393,5 +393,87 @@ def evaluate(params, config, all_inputs, noise_std=None, n_seeds=8):
     return all_ys, all_xs, all_as
 
 
-def get_brain_area(brain_area, xs):
+def get_brain_area(brain_area, xs, zs=None):
+    """Return the state array for ``brain_area``.
+
+    ``zs`` is accepted for backward compatibility with older call sites that
+    passed a separate neuromodulator-state tuple; the current model packs all
+    states (including PKA excitability and Medulla) into ``xs``, so ``zs`` is
+    ignored.
+    """
     return xs[STATE_AREA_ORDER.index(brain_area)]
+
+
+def get_response_times_opto(ys, cue_start=0, dt=0.01, threshold=0.5, exclude_nan=True):
+    """First-crossing response times for opto-format outputs.
+
+    Args:
+        ys: array of shape (n_seeds, T, 1) or (n_seeds, T).
+        cue_start: timestep to start looking for a response.
+        dt: timestep duration in seconds.
+        threshold: output threshold counted as a response.
+        exclude_nan: if True, drop trials with no response; otherwise keep NaN.
+
+    Returns:
+        1-D array of response times (seconds) when exclude_nan, else (n_seeds,).
+    """
+    if ys.ndim == 3:
+        ys = ys[..., 0]
+    post = ys[:, cue_start:]
+    crossed = post > threshold
+    has_resp = jnp.any(crossed, axis=1)
+    first_idx = jnp.argmax(crossed, axis=1)
+    rts = jnp.where(has_resp, first_idx.astype(jnp.float32) * dt, jnp.nan)
+    if exclude_nan:
+        return rts[~jnp.isnan(rts)]
+    return rts
+
+
+def get_d1_d2_ratio(all_xs, t_start, t_end, avg_time=True, remove_outliers=False):
+    """D1 minus D2 mean activity over a time window.
+
+    Args:
+        all_xs: state list/tuple of arrays shaped (n_seeds, n_conditions, T, N).
+        t_start, t_end: time-window bounds (timesteps).
+        avg_time: if True, average over the window -> (n_seeds, n_conditions).
+        remove_outliers: if True, NaN out per-condition outliers (z > 3).
+
+    Returns:
+        (n_seeds, n_conditions[, win]) array of D1-D2 activity differences.
+    """
+    d1 = get_brain_area("D1", all_xs)
+    d2 = get_brain_area("D2", all_xs)
+    d1m = jnp.mean(d1[..., t_start:t_end, :], axis=-1)
+    d2m = jnp.mean(d2[..., t_start:t_end, :], axis=-1)
+    ratio = d1m - d2m
+    if avg_time:
+        ratio = jnp.mean(ratio, axis=-1)
+    if remove_outliers:
+        z = jnp.abs((ratio - jnp.nanmean(ratio)) / (jnp.nanstd(ratio) + 1e-8))
+        ratio = jnp.where(z > 3, jnp.nan, ratio)
+    return ratio
+
+
+def get_slope(all_xs, t_start, t_end, avg_neurons=True, remove_outliers=False):
+    """Least-squares ramp slope of cortical activity over a time window.
+
+    Returns:
+        (n_seeds, n_conditions) array of slopes (per unit time-step).
+    """
+    cortex = get_brain_area("Cortex", all_xs)  # (n_seeds, n_conditions, T, N)
+    seg = cortex[..., t_start:t_end, :]
+    if avg_neurons:
+        seg = jnp.mean(seg, axis=-1)  # (n_seeds, n_conditions, win)
+    else:
+        seg = jnp.mean(seg, axis=-1)
+    win = seg.shape[-1]
+    t = jnp.arange(win, dtype=seg.dtype)
+    t_centered = t - jnp.mean(t)
+    y_centered = seg - jnp.mean(seg, axis=-1, keepdims=True)
+    num = jnp.sum(t_centered * y_centered, axis=-1)
+    den = jnp.sum(t_centered ** 2)
+    slope = num / (den + 1e-8)
+    if remove_outliers:
+        z = jnp.abs((slope - jnp.nanmean(slope)) / (jnp.nanstd(slope) + 1e-8))
+        slope = jnp.where(z > 3, jnp.nan, slope)
+    return slope
