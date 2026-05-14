@@ -113,10 +113,10 @@ def plot_cue_algn_activity(all_xs, noiseless=False, ys=None):
     aligned_zs = jnp.array(aligned_zs)'''
     x_axis = (jnp.arange(new_T + 100) - 100) / 100
 
-    n_rows = 9 if ys is not None else 8
-    fig_h = 13.5 if ys is not None else 12
+    n_rows = 10 if ys is not None else 9
+    fig_h = 15.0 if ys is not None else 13.5
     fig, axs = plt.subplots(n_rows, 4, figsize=(12, fig_h), sharex=True, sharey=False)
-    for idx, name in enumerate(['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus']):
+    for idx, name in enumerate(['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus', 'Medulla']):
         area_activity = cl.get_brain_area(name, all_xs)
         area_activity = jnp.stack(
             [stmt.align_to_cue(area_activity_seed, cs.test_start_t, new_T=new_T) for area_activity_seed in area_activity]
@@ -241,7 +241,7 @@ def plot_cue_algn_activity(all_xs, noiseless=False, ys=None):
 
     plt.suptitle('Aligned to cue')
     plt.tight_layout()
-    save_fig(fig, 'cue_aligned_activity')
+    save_fig(fig, 'cue_aligned_activity', dpi=150)
 
 
 def plot_response_times(valid_response_times):
@@ -1145,11 +1145,11 @@ def plot_loss_function_adaptive():
     save_fig(fig, 'adaptive_loss_function')
 
 
-def save_fig(fig, name):
+def save_fig(fig, name, dpi=900):
     svgname = cs.svg_folder + '/' + name + '.svg'
     pngname = cs.png_folder + '/' + name + '.png'
     fig.savefig(svgname)
-    fig.savefig(pngname, dpi=900)
+    fig.savefig(pngname, dpi=dpi)
 
 def plot_binned_pnr(all_ys, all_xs, all_zs, conditions, xlabel, title, filename, perturbation_boxes=None):
     """

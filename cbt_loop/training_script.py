@@ -3,8 +3,9 @@ import pickle as pkl
 import jax.random as jr
 import optax
 
-import cbt_loop.cbt_rnn as cbtl
-import cbt_loop.config_script as cfg
+import cbt_rnn as cbtl
+import config_script as cfg
+
 import self_timed_movement_task as stmt
 
 

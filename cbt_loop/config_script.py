@@ -20,7 +20,7 @@ RNN_CONFIG = {
     "n_gpe": 3,
     "n_stn": 3,
     "n_t": 10,
-    "g_bg": 0.5,
+    "g_bg": 1.2,
     "g_nm": 0.5,
     "noise_std": 0.05,
 }
@@ -39,7 +39,7 @@ RL_CONFIG = {
 }
 
 TASK_CONFIG = {
-    "task_mode": "self_timed",  # one of: self_timed, hybrid, pavlovian
+    "task_mode": "self-timed",  # one of: self_timed, hybrid, pavlovian
     "t_start": jr.randint(jr.PRNGKey(SEED_CONFIG["task_seed"]), shape=(100,), minval=50, maxval=300),
     "t_cue": 10,
     "t_wait": 300,
