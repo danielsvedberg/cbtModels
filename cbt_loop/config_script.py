@@ -22,7 +22,7 @@ RNN_CONFIG = {
     "n_t": 10,
     "g_bg": 1.2,
     "g_nm": 0.5,
-    "noise_std": 0.05,
+    "noise_std": 0.01,
 }
 
 OPTIM_CONFIG = {
@@ -33,9 +33,9 @@ RL_CONFIG = {
     "entropy_coef": 0.1,
     "baseline_momentum": 0.99,
     "objective_mode": "log_reward",
-    "brevity_coef": 0.1,
-    "silence_coef": 0.1,
-    "tail_coef": 0.1,
+    "brevity_coef": 0.5,
+    "silence_coef": 0.2,
+    "tail_coef": 0.2,
 }
 
 TASK_CONFIG = {

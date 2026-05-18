@@ -27,14 +27,15 @@ def _build_weight_matrix(params):
     n_gpe = params["J_gpe"].shape[0]
     n_stn = params["J_stn"].shape[0]
     n_snr = params["P_snr"].shape[0]
+    n_sc  = params["J_sc"].shape[0]
     n_t   = params["J_t"].shape[0]
     n_med = params["J_med_w1"].shape[0] * 2  # 2 E + 2 I units
     n_in  = params["B_cue_c"].shape[1]   # number of input channels
     n_out = params["C_med"].shape[0]      # number of output channels
 
     # Input and Output are prepended/appended so they appear as thin border lines.
-    areas = ["Input", "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "Thalamus", "Medulla", "Output"]
-    sizes = [n_in, n_c, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_t, n_med, n_out]
+    areas = ["Input", "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "SC", "Thalamus", "Medulla", "Output"]
+    sizes = [n_in, n_c, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_sc, n_t, n_med, n_out]
 
     offsets = {}
     off = 0
@@ -54,11 +55,14 @@ def _build_weight_matrix(params):
     place("Cortex",   "Input",    params["B_cue_c"])
     # Recurrent and inter-area connections
     place("Cortex",   "Cortex",   params["J_c"])
-    place("Cortex",   "Thalamus", params["B_t_c"])
-    place("D1",       "Cortex",   params["B_c_d1"])
+    place("Cortex",   "Thalamus", cbtl.exc(params["B_t_c"]))
+    place("D1",       "Cortex",   cbtl.exc(params["B_c_d1"]))
     place("D1",       "D1",       cbtl.inh(params["J_d1"]))
-    place("D2",       "Cortex",   params["B_c_d2"])
+    place("D1",       "D2",       cbtl.inh(params["B_d2_d1"]))
+    place("D2",       "Cortex",   cbtl.exc(params["B_c_d2"]))
     place("D2",       "D2",       cbtl.inh(params["J_d2"]))
+    place("D2",       "D1",       cbtl.inh(params["B_d1_d2"]))
+    place("SNc",      "Cortex",   cbtl.exc(params["B_c_snc"]))
     place("SNc",      "STN",      cbtl.exc(params["B_stn_snc"]))
     place("SNc",      "D1",       cbtl.inh(params["B_d1_snc"]))
     place("SNc",      "D2",       cbtl.inh(params["B_d2_snc"]))
@@ -66,12 +70,20 @@ def _build_weight_matrix(params):
     place("GPe",      "STN",      cbtl.exc(params["B_stn_gpe"]))
     place("GPe",      "GPe",      cbtl.inh(params["J_gpe"]))
     place("STN",      "GPe",      cbtl.inh(params["B_gpe_stn"]))
-    place("STN",      "Cortex",   cbtl.exc(params["B_c_stn"]))
+    place("STN",      "Cortex",   cbtl.exc(params["B_c_stn"]))  # hyperdirect pathway
     place("STN",      "STN",      cbtl.exc(params["J_stn"]))
     place("SNr",      "D1",       cbtl.inh(params["B_d1_snr"]))
     place("SNr",      "STN",      cbtl.exc(params["B_stn_snr"]))
-    place("Thalamus", "Cortex",   params["B_c_t"])
+    place("SC",       "Cortex",   cbtl.exc(params["B_c_sc"]))
+    place("SC",       "SNr",      cbtl.inh(params["B_snr_sc"]))
+    place("SC",       "SC",       params["J_sc"])
+    place("Thalamus", "Cortex",   cbtl.exc(params["B_c_t"]))
     place("Thalamus", "SNr",      cbtl.inh(params["B_snr_t"]))
+    place("Thalamus", "SC",       cbtl.exc(params["B_sc_t"]))
+    # SC projects to E units only (first 2 rows of Medulla).
+    r0 = offsets["Medulla"][0]
+    c0, c1 = offsets["SC"]
+    W[r0:r0 + 2, c0:c1] = np.array(cbtl.exc(params["B_sc_med"]))
     place("Thalamus", "Thalamus", params["J_t"])
     def _med_block(raw):
         return np.concatenate([np.array(cbtl.exc(raw[:, :1])), np.array(cbtl.inh(raw[:, 1:]))], axis=1)
@@ -90,12 +102,10 @@ def _build_weight_matrix(params):
     r0 = offsets["Medulla"][0]
     c0, c1 = offsets["Cortex"]
     W[r0:r0 + 2, c0:c1] = np.array(params["B_c_med"])
-    # Medulla → Output
-    c_med = np.concatenate([
-        np.array(cbtl.exc(params["C_med"][:, :2])),
-        np.array(cbtl.inh(params["C_med"][:, 2:])),
-    ], axis=1)
-    place("Output",   "Medulla",  c_med)
+    # Medulla → Output: readout from E units only (first 2 columns of Medulla).
+    r0, r1 = offsets["Output"]
+    c0 = offsets["Medulla"][0]
+    W[r0:r1, c0:c0 + 2] = np.array(cbtl.exc(params["C_med"]))
 
     labels = [f"{a}_{i}" for a, sz in zip(areas, sizes) for i in range(sz)]
     return W, labels, areas, sizes, offsets

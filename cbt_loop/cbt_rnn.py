@@ -5,7 +5,7 @@ import sys
 import jax.numpy as jnp
 import jax.random as jr
 from jax import lax, vmap
-from jax.nn import sigmoid
+from jax.nn import sigmoid, tanh
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -26,17 +26,20 @@ def nln(x):
     return stmt.nln(x)
 
 
-def bg_nln(x, rb):
+def bg_nln(x, b):
     #return stmt.bg_nln(x)
-    return sigmoid(4*(x-0.5+rb))
+    return sigmoid(4*(x-0.5+b))
+    #clip x min to positive
+    #inp = jnp.clip(x-0.5+b, 0, None)
+    #return tanh(inp)
 
 
 # Canonical state tuple order used across CBT loop code.
 STATE_VAR_ORDER = (
-    "x_c", "x_d1", "x_d2", "x_snc", "x_gpe", "x_stn", "x_snr", "x_t", "pka_d1", "pka_d2", "x_med",
+    "x_c", "x_d1", "x_d2", "x_snc", "x_gpe", "x_stn", "x_snr", "x_sc", "x_t", "pka_d1", "pka_d2", "x_med",
 )
 STATE_AREA_ORDER = (
-    "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "Thalamus", "pkaD1", "pkaD2", "Medulla",
+    "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "SC", "Thalamus", "pkaD1", "pkaD2", "Medulla",
 )
 
 
@@ -49,6 +52,7 @@ def init_params(
     n_snr=6,
     n_gpe=6,
     n_stn=6,
+    n_sc=6,
     n_t=10,
     n_med=4,
     n_input=1,
@@ -58,7 +62,7 @@ def init_params(
     noise_std=0.01,
 ):
     """Initialize multiregion CBT loop params and runtime config."""
-    skeys = jr.split(rng_key, 31)
+    skeys = jr.split(rng_key, 40)
 
     params = {
         "J_c": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[2], (n_c, n_c)),
@@ -69,12 +73,14 @@ def init_params(
         "J_gpe": (g_bg / math.sqrt(n_gpe)) * jr.normal(skeys[19], (n_gpe, n_gpe)),
         "J_stn": (g_bg / math.sqrt(n_stn)) * jr.normal(skeys[20], (n_stn, n_stn)),
         "P_snr": (g_bg / math.sqrt(n_snr)) * jr.normal(skeys[18], (n_snr,)),
+        "P_gpe": (g_bg / math.sqrt(n_gpe)) * jr.normal(skeys[34], (n_gpe,)),
         "J_t": (g_bg / math.sqrt(n_t)) * jr.normal(skeys[5], (n_t, n_t)),
         "B_cue_c": (1 / math.sqrt(n_input)) * jr.normal(skeys[3], (n_c, n_input)),
         "B_t_c": (g_bg / math.sqrt(n_t)) * jr.normal(skeys[4], (n_c, n_t)),
         "B_c_t": (1 / math.sqrt(n_c)) * jr.normal(skeys[29], (n_t, n_c)),
         "B_c_d1": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[1], (n_d1, n_c)),
         "B_c_d2": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[12], (n_d2, n_c)),
+        "B_c_snc": (1 / math.sqrt(n_c)) * jr.normal(skeys[32], (n_snc, n_c)),
         "B_stn_snc": (1 / math.sqrt(n_stn)) * jr.normal(skeys[9], (n_snc, n_stn)),
         "B_d1_snc": (1 / math.sqrt(n_d1)) * jr.normal(skeys[17], (n_snc, n_d1)),
         "B_d2_snc": (1 / math.sqrt(n_d2)) * jr.normal(skeys[28], (n_snc, n_d2)),
@@ -82,74 +88,105 @@ def init_params(
         "B_d2_gpe": (1 / math.sqrt(n_d2)) * jr.normal(skeys[24], (n_gpe, n_d2)),
         "B_stn_gpe": (1 / math.sqrt(n_stn)) * jr.normal(skeys[27], (n_gpe, n_stn)),
         "B_gpe_stn": (1 / math.sqrt(n_gpe)) * jr.normal(skeys[25], (n_stn, n_gpe)),
-        "B_c_stn": (1 / math.sqrt(n_c)) * jr.normal(skeys[26], (n_stn, n_c)),
+        "B_c_stn": (1 / math.sqrt(n_c)) * jr.normal(skeys[26], (n_stn, n_c)),  # hyperdirect pathway
         "B_stn_snr": (1 / math.sqrt(n_stn)) * jr.normal(skeys[23], (n_snr, n_stn)),
         "B_snr_t": (1 / math.sqrt(n_snr)) * jr.normal(skeys[6], (n_t, n_snr)),
+        # Superior colliculus. J_sc is free-sign (unconstrained recurrence).
+        # skeys[39] is the new slot; skeys[34] is taken by P_gpe.
+        "J_sc":     (g_bg / math.sqrt(n_sc)) * jr.normal(skeys[39], (n_sc, n_sc)),
+        "B_c_sc":   (1 / math.sqrt(n_c))   * jr.normal(skeys[35], (n_sc, n_c)),
+        "B_snr_sc": (1 / math.sqrt(n_snr)) * jr.normal(skeys[36], (n_sc, n_snr)),
+        "B_sc_t":   (1 / math.sqrt(n_sc))  * jr.normal(skeys[37], (n_t,  n_sc)),
+        "B_sc_med": (1 / math.sqrt(n_sc))  * jr.normal(skeys[38], (n_med // 2, n_sc)),
         "m_d1": (1 / math.sqrt(n_snc)) * jr.normal(skeys[10], (1, n_snc)),
         "m_d2": (1 / math.sqrt(n_snc)) * jr.normal(skeys[11], (1, n_snc)),
+        # Lateral inhibition between D1 and D2 populations.
+        "B_d1_d2": (g_bg / math.sqrt(n_d1)) * jr.normal(skeys[16], (n_d2, n_d1)),  # D1 → D2 (inh)
+        "B_d2_d1": (g_bg / math.sqrt(n_d2)) * jr.normal(skeys[31], (n_d1, n_d2)),  # D2 → D1 (inh)
         # Medullary area: two E/I pairs (E0,I0) and (E1,I1) coupled reciprocally.
         # Each 2×2 block: col 0 = from E (exc), col 1 = from I (inh).
         "J_med_w1": (g_bg / math.sqrt(2)) * jr.normal(skeys[13], (2, 2)),  # within pair 1
         "J_med_w2": (g_bg / math.sqrt(2)) * jr.normal(skeys[21], (2, 2)),  # within pair 2
         "J_med_x":  (g_bg / math.sqrt(2)) * jr.normal(skeys[30], (2, 2)),  # cross-pair
         "B_c_med": (1 / math.sqrt(n_c)) * jr.normal(skeys[14], (2, n_c)),  # cortex → E units only
-        "C_med": (1 / math.sqrt(n_med)) * jr.normal(skeys[15], (n_output, n_med)),
-        "rb": jnp.abs((1 / math.sqrt(n_med)) * jr.normal(skeys[16], (n_output,))),
-    }
-
-    config = {
-        "x_c0": jnp.ones((n_c,)) * 0.1,
-        "x_d10": jnp.ones((n_d1,)) * 0.1,
-        "x_d20": jnp.ones((n_d2,)) * 0.1,
-        "x_snc0": jnp.ones((n_snc,)) * 0.1,
+        "C_med": (1 / math.sqrt(n_med)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
+        #"rb": jnp.abs((1 / math.sqrt(n_med)) * jr.normal(skeys[16], (n_output,))),
+        # Trainable initial states (resting/baseline activity for each area).
+        "x_c0":   jnp.ones((n_c,))   * 0.1,
+        "x_d10":  jnp.ones((n_d1,))  * 0.1,
+        "x_d20":  jnp.ones((n_d2,))  * 0.1,
+        "x_snc0": jnp.ones((n_snc,)) * 0.01,
         "x_gpe0": jnp.ones((n_gpe,)) * 0.1,
         "x_stn0": jnp.ones((n_stn,)) * 0.1,
         "x_snr0": jnp.ones((n_snr,)) * 0.1,
-        "x_t0": jnp.ones((n_t,)) * 0.3,
+        "x_sc0":  jnp.ones((n_sc,))  * 0.1,
+        "x_t0":   jnp.ones((n_t,))   * 0.3,
         "x_med0": jnp.ones((n_med,)) * 0.1,
-        # PKA initial states: D1 starts near 0 (A1R dominates at rest),
-        # D2 starts at tonic A2R baseline.
-        "pka_d10": jnp.zeros((n_d1,)),
-        "pka_d20": jnp.ones((n_d2,)) * 0.15,
-        "tau_c": 10.0,
-        "tau_med": 10.0,
-        "tau_d1": 10.0,
-        "tau_d2": 10.0,
-        "tau_t": 10.0,
-        "tau_snr": 10.0,
-        "tau_gpe": 10.0,
-        "tau_stn": 10.0,
-        "tau_snc": 40.0,
+        # Trainable PKA initial states (tonic neuromodulatory baseline).
+        "pka_d10": jnp.ones((n_d1,)) * 0.45,
+        "pka_d20": jnp.ones((n_d2,)) * 0.55,
+    }
+
+    config = {
+        "tau_c": 5.0,
+        "tau_med": 5.0,
+        "tau_d1": 5.0,
+        "tau_d2": 5.0,
+        "tau_t": 5.0,
+        "tau_snr": 5.0,
+        "tau_gpe": 5.0,
+        "tau_stn": 5.0,
+        "tau_snc": 20.0,
         # PKA deactivation: 10s half-life → τ = t_half/ln2 ≈ 14.4s → 1440 steps at dt=10ms.
-        "tau_pka_fall": 1440.0,
+        "tau_pka_fall": 500,
         # PKA activation: receptor-mediated cAMP rise is fast (~200ms → 20 steps at dt=10ms).
         "tau_pka_rise": 20.0,
         # Tonic adenosine drive constants (fixed biology, not learned).
-        "k_a1r": 0.05,   # A1R inhibitory drive on D1 PKA
-        "k_a2r": 0.15,   # A2R excitatory drive on D2 PKA
+        "k_a1r": 0.2,   # A1R inhibitory drive on D1 PKA
+        "k_a2r": 0.2,   # A2R excitatory drive on D2 PKA
         # DA-PKA coupling strengths.
         "k_d1r": 0.2,    # D1R: DA activates D1 PKA
         "k_d2r": 0.2,    # D2R: DA inhibits D2 PKA
+        "tau_sc": 10.0,
         "snc_pacer_max": 0.1,
-        "stn_pacer_max": 0.1,
-        "snr_pacer_max": 0.2,
+        "stn_pacer_max": 0.3,
+        "snr_pacer_max": 0.4,
+        "gpe_pacer_max": 0.3,
         "noise_std": noise_std,
     }
     return params, config
 
 
 def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None):
-    x_c0 = config["x_c0"]
-    x_d10 = config["x_d10"]
-    x_d20 = config["x_d20"]
-    x_snc0 = config["x_snc0"]
-    x_gpe0 = config["x_gpe0"]
-    x_stn0 = config["x_stn0"]
-    x_snr0 = config["x_snr0"]
-    x_t0 = config["x_t0"]
-    x_med0 = jnp.asarray(config.get("x_med0", jnp.ones(4) * 0.1))
-    pka_d10 = jnp.asarray(config.get("pka_d10", jnp.zeros_like(x_d10)))
-    pka_d20 = jnp.asarray(config.get("pka_d20", jnp.ones_like(x_d20) * 0.15))
+    # Initial states: prefer params (trainable); fall back to config for legacy bundles.
+    def _x0(key, fallback):
+        if key in params:
+            return jnp.asarray(params[key])
+        return jnp.asarray(config.get(key, fallback))
+
+    n_c_   = params["J_c"].shape[0]
+    n_d1_  = params["J_d1"].shape[0]
+    n_d2_  = params["J_d2"].shape[0]
+    n_snc_ = params["P_snc"].shape[0]
+    n_gpe_ = params["J_gpe"].shape[0]
+    n_stn_ = params["J_stn"].shape[0]
+    n_snr_ = params["P_snr"].shape[0]
+    n_sc_  = params["J_sc"].shape[0]
+    n_t_   = params["J_t"].shape[0]
+    n_med_ = params["J_med_w1"].shape[0] * 2
+
+    x_c0   = _x0("x_c0",   jnp.ones(n_c_)   * 0.1)
+    x_d10  = _x0("x_d10",  jnp.ones(n_d1_)  * 0.1)
+    x_d20  = _x0("x_d20",  jnp.ones(n_d2_)  * 0.1)
+    x_snc0 = _x0("x_snc0", jnp.ones(n_snc_) * 0.01)
+    x_gpe0 = _x0("x_gpe0", jnp.ones(n_gpe_) * 0.1)
+    x_stn0 = _x0("x_stn0", jnp.ones(n_stn_) * 0.1)
+    x_snr0 = _x0("x_snr0", jnp.ones(n_snr_) * 0.1)
+    x_sc0  = _x0("x_sc0",  jnp.ones(n_sc_)  * 0.1)
+    x_t0   = _x0("x_t0",   jnp.ones(n_t_)   * 0.3)
+    x_med0 = _x0("x_med0", jnp.ones(n_med_) * 0.1)
+    pka_d10 = _x0("pka_d10", jnp.ones(n_d1_) * 0.45)
+    pka_d20 = _x0("pka_d20", jnp.ones(n_d2_) * 0.5)
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
     rng_key, init_key, step_key = jr.split(rng_key, 3)
@@ -162,6 +199,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_gpe0 = nln(x_gpe0 + noise_std * jr.normal(init_key, x_gpe0.shape))
     x_stn0 = nln(x_stn0 + noise_std * jr.normal(init_key, x_stn0.shape))
     x_snr0 = nln(x_snr0 + noise_std * jr.normal(init_key, x_snr0.shape))
+    x_sc0  = nln(x_sc0  + noise_std * jr.normal(init_key, x_sc0.shape))
     x_t0 = nln(x_t0 + noise_std * jr.normal(init_key, x_t0.shape))
     x_med0 = nln(x_med0 + noise_std * jr.normal(init_key, x_med0.shape))
 
@@ -174,12 +212,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
     p_snr = exc(params["P_snr"])
     p_snc = exc(params["P_snc"])
+    p_gpe = exc(params.get("P_gpe", jnp.zeros(j_gpe.shape[0])))
 
     b_cue_c = params["B_cue_c"]
-    b_t_c = params["B_t_c"]
-    b_c_t = params["B_c_t"]
-    b_c_d1 = params["B_c_d1"]
-    b_c_d2 = params["B_c_d2"]
+    b_t_c = exc(params["B_t_c"])
+    b_c_t = exc(params["B_c_t"])
+    b_c_d1 = exc(params["B_c_d1"])
+    b_c_d2 = exc(params["B_c_d2"])
+    b_c_snc = exc(params["B_c_snc"])
     b_stn_snc = exc(params["B_stn_snc"])
     b_d1_snc = inh(params["B_d1_snc"])
     b_d2_snc = inh(params["B_d2_snc"])
@@ -187,11 +227,21 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_d2_gpe = inh(params["B_d2_gpe"])
     b_stn_gpe = exc(params["B_stn_gpe"])
     b_gpe_stn = inh(params["B_gpe_stn"])
-    b_c_stn = exc(params["B_c_stn"])
+    b_c_stn = exc(params["B_c_stn"])  # hyperdirect pathway
     b_stn_snr = exc(params["B_stn_snr"])
     b_snr_t = inh(params["B_snr_t"])
-    m_d1 = params["m_d1"]
-    m_d2 = params["m_d2"]
+    # Superior colliculus: free-sign recurrence, exc from cortex, inh from SNr, exc to thalamus and medulla.
+    j_sc     = params["J_sc"]
+    b_c_sc   = exc(params["B_c_sc"])
+    b_snr_sc = inh(params["B_snr_sc"])
+    b_sc_t   = exc(params["B_sc_t"])
+    b_sc_med = exc(params["B_sc_med"])
+    m_d1 = exc(params["m_d1"])
+    m_d2 = exc(params["m_d2"])
+    _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
+    _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
+    b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition
+    b_d2_d1 = inh(params.get("B_d2_d1", _zeros_d2_d1))  # D2 → D1 lateral inhibition
     # Medullary E/I pairs. Each 2×2 block: col 0 from E (exc), col 1 from I (inh).
     def _med_block(raw):
         return jnp.concatenate([exc(raw[:, :1]), inh(raw[:, 1:])], axis=1)
@@ -208,12 +258,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         jnp.stack([j_w1[1, 0], j_x[1, 0],  j_w1[1, 1], j_x[1, 1]]),    # I0
         jnp.stack([j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]]),   # I1
     ])
-    b_c_med = params["B_c_med"]  # shape (2, n_c): projects to E units only
-    c_med = jnp.concatenate([
-        exc(params["C_med"][:, :2]),
-        inh(params["C_med"][:, 2:]),
-    ], axis=1)
-    rb = params["rb"]
+    b_c_med = exc(params["B_c_med"])  # shape (2, n_c): projects to E units only
+    c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
+    #rb = params["rb"]
 
 
     tau_c = config.get("tau_c", 10.0)
@@ -224,20 +271,23 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     tau_gpe = config.get("tau_gpe", tau_c)
     tau_stn = config.get("tau_stn", tau_c)
     tau_snc = config.get("tau_snc", tau_c)
-    tau_pka_fall = config.get("tau_pka_fall", 1440.0)
+    tau_pka_fall = config.get("tau_pka_fall", 100.0)
     tau_pka_rise = config.get("tau_pka_rise", 20.0)
-    k_a1r        = config.get("k_a1r",        0.05)
-    k_a2r    = config.get("k_a2r",   0.15)
+    k_a1r        = config.get("k_a1r",        0.1)
+    k_a2r    = config.get("k_a2r",   0.1)
     k_d1r    = config.get("k_d1r",   0.2)
     k_d2r    = config.get("k_d2r",   0.2)
     snc_pacer_max = config.get("snc_pacer_max", 0.1)
     stn_pacer_max = config.get("stn_pacer_max", 0.1)
     snr_pacer_max = config.get("snr_pacer_max", 0.8)
+    gpe_pacer_max = config.get("gpe_pacer_max", 0.25)
 
     snc_pacer = sigmoid(p_snc) * snc_pacer_max
     stn_pacer = stn_pacer_max * jnp.ones(j_stn.shape[0])
     snr_pacer = sigmoid(p_snr) * snr_pacer_max
+    gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
 
+    tau_sc  = config.get("tau_sc",  10.0)
     tau_med = config.get("tau_med", 10.0)
 
     n_steps = inputs.shape[0]
@@ -247,19 +297,20 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         opto_stimulation = jnp.zeros((n_steps, n_d1_cells + n_d2_cells))
 
     def _step(carry, inp_stim_rng):
-        x_d1, x_d2, x_c, x_t, x_snr, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med = carry
+        x_d1, x_d2, x_c, x_t, x_snr, x_sc, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med = carry
         u_t, stim_t, step_rng = inp_stim_rng
         stim_d1 = stim_t[:n_d1_cells]
         stim_d2 = stim_t[n_d1_cells:]
 
         # add noise
-        rng_d1, rng_d2, rng_c, rng_t, rng_snr, rng_gpe, rng_stn, rng_snc, rng_med = jr.split(step_rng, 9)
+        rng_d1, rng_d2, rng_c, rng_t, rng_snr, rng_sc, rng_gpe, rng_stn, rng_snc, rng_med = jr.split(step_rng, 10)
         coef = noise_std / jnp.sqrt(2.0 * tau_c)
         x_d1 = x_d1 + coef * jr.normal(rng_d1, x_d1.shape)
         x_d2 = x_d2 + coef * jr.normal(rng_d2, x_d2.shape)
         x_c = x_c + coef * jr.normal(rng_c, x_c.shape)
         x_t = x_t + coef * jr.normal(rng_t, x_t.shape)
         x_snr = x_snr + coef * jr.normal(rng_snr, x_snr.shape)
+        x_sc = x_sc + coef * jr.normal(rng_sc, x_sc.shape)
         x_gpe = x_gpe + coef * jr.normal(rng_gpe, x_gpe.shape)
         x_stn = x_stn + coef * jr.normal(rng_stn, x_stn.shape)
         coef_snc = noise_std / jnp.sqrt(2.0 * tau_snc)
@@ -275,42 +326,55 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_t = (1.0 - (1.0 / tau_t)) * x_t + (1.0 / tau_t) * (j_t @ x_t)
         x_t = x_t + (1.0 / tau_t) * (b_c_t @ x_c)
         x_t = x_t + (1.0 / tau_t) * (b_snr_t @ x_snr)
+        x_t = x_t + (1.0 / tau_t) * (b_sc_t @ x_sc)
         x_t = nln(x_t)
 
         x_snc = (1.0 - (1.0 / tau_snc)) * x_snc
         x_snc = x_snc + (1.0 / tau_snc) * snc_pacer
         x_snc = x_snc + (1.0 / tau_snc) * (b_stn_snc @ x_stn)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_c_snc @ x_c)
         x_snc = x_snc + (1.0 / tau_snc) * (b_d1_snc @ x_d1)
         x_snc = x_snc + (1.0 / tau_snc) * (b_d2_snc @ x_d2)
         x_snc = nln(x_snc)
 
         # Scalar DA signals from SNc for each SPN population.
-        g_d1 = jnp.ravel(m_d1 @ x_snc)[0]
-        g_d2 = jnp.ravel(m_d2 @ x_snc)[0]
+        # g_d1 = jnp.ravel(m_d1 @ x_snc)[0]
+        # g_d2 = jnp.ravel(m_d2 @ x_snc)[0]
 
         # PKA dynamics (asymmetric: fast activation, slow deactivation).
         #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
-        pka_d1_target = nln(k_d1r * g_d1 - k_a1r)
-        rate_d1 = jnp.where(pka_d1_target > pka_d1, 1.0 / tau_pka_rise, 1.0 / tau_pka_fall)
-        pka_d1 = pka_d1 + rate_d1 * (pka_d1_target - pka_d1)
+        # pka_d1_target = nln(k_d1r * g_d1 - k_a1r)
+        # rate_d1 = jnp.where(pka_d1_target > pka_d1, 1.0 / tau_pka_rise, 1.0 / tau_pka_fall)
+        # pka_d1 = pka_d1 + rate_d1 * (pka_d1_target - pka_d1)
+        
+        pka_d1 = (1.0-(1.0/tau_pka_fall)) * pka_d1
+        pka_d1 = pka_d1 + (1.0/ tau_pka_rise) * (m_d1 @ x_snc - k_a1r)
+        pka_d1 = sigmoid(4*(pka_d1-0.5))
 
         #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
-        pka_d2_target = nln(k_a2r - k_d2r * g_d2)
-        rate_d2 = jnp.where(pka_d2_target > pka_d2, 1.0 / tau_pka_rise, 1.0 / tau_pka_fall)
-        pka_d2 = pka_d2 + rate_d2 * (pka_d2_target - pka_d2)
+        # pka_d2_target = nln(k_a2r - k_d2r * g_d2)
+        # rate_d2 = jnp.where(pka_d2_target > pka_d2, 1.0 / tau_pka_rise, 1.0 / tau_pka_fall)
+        # pka_d2 = pka_d2 + rate_d2 * (pka_d2_target - pka_d2)
+        
+        pka_d2 = (1.0-(1.0/tau_pka_fall)) * pka_d2
+        pka_d2 = pka_d2 + (1.0/ tau_pka_rise) * (k_a2r - m_d2 @ x_snc)
+        pka_d2 = sigmoid(4*(pka_d2-0.5))
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
         x_d1 = x_d1 + (1.0 / tau_d1) * ((b_c_d1 @ x_c) + (j_d1 @ x_d1))
+        x_d1 = x_d1 + (1.0 / tau_d1) * (b_d2_d1 @ x_d2)
         x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
         x_d1 = bg_nln(x_d1, pka_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
         x_d2 = x_d2 + (1.0 / tau_d2) * ((b_c_d2 @ x_c) + (j_d2 @ x_d2))
+        x_d2 = x_d2 + (1.0 / tau_d2) * (b_d1_d2 @ x_d1)
         x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
         x_d2 = bg_nln(x_d2, pka_d2)
 
-        x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe + (1.0 / tau_gpe) * (j_gpe @ x_gpe)
+        x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
+        x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer
         x_gpe = x_gpe + (1.0 / tau_gpe) * (b_d2_gpe @ x_d2)
         x_gpe = x_gpe + (1.0 / tau_gpe) * (b_stn_gpe @ x_stn)
         x_gpe = nln(x_gpe)
@@ -318,8 +382,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_stn = (1.0 - (1.0 / tau_stn)) * x_stn
         x_stn = x_stn + (1.0 / tau_stn) * stn_pacer
         x_stn = x_stn + (1.0 / tau_stn) * (j_stn @ x_stn)
+        x_stn = x_stn + (1.0 / tau_stn) * (b_c_stn @ x_c)  # hyperdirect pathway
         x_stn = x_stn + (1.0 / tau_stn) * (b_gpe_stn @ x_gpe)
-        x_stn = x_stn + (1.0 / tau_stn) * (b_c_stn @ x_c)
         x_stn = nln(x_stn)
 
         x_snr = (1.0 - (1.0 / tau_snr)) * x_snr
@@ -328,26 +392,33 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_snr = x_snr + (1.0 / tau_snr) * (b_stn_snr @ x_stn)
         x_snr = nln(x_snr)
 
+        # Superior colliculus: free-sign recurrence, exc from cortex, inh from SNr.
+        x_sc = (1.0 - (1.0 / tau_sc)) * x_sc + (1.0 / tau_sc) * (j_sc @ x_sc)
+        x_sc = x_sc + (1.0 / tau_sc) * (b_c_sc @ x_c)
+        x_sc = x_sc + (1.0 / tau_sc) * (b_snr_sc @ x_snr)
+        x_sc = nln(x_sc)
+
         # medulla: two E/I pairs with reciprocal coupling; cortical drive to E units only
         x_med = (1.0 - (1.0 / tau_med)) * x_med + (1.0 / tau_med) * (j_med @ x_med)
         x_med = x_med.at[:2].add((1.0 / tau_med) * (b_c_med @ x_c))
+        x_med = x_med.at[:2].add((1.0 / tau_med) * (b_sc_med @ x_sc))
         x_med = nln(x_med)
         
 
         #y_t = sigmoid(4.0 * (c_med @ x_med) - 0.5)
-        y_t = nln(c_med @ x_med)
+        y_t = nln(c_med @ x_med[:2])  # readout from E units only
 
-        new_carry = (x_d1, x_d2, x_c, x_t, x_snr, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med)
-        out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_stn, x_snr, x_t, pka_d1, pka_d2, x_med)
+        new_carry = (x_d1, x_d2, x_c, x_t, x_snr, x_sc, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med)
+        out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_stn, x_snr, x_sc, x_t, pka_d1, pka_d2, x_med)
         return new_carry, out
 
     step_keys = jr.split(step_key, n_steps)
-    _, (ys, xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xt, pkad1, pkad2, xmed) = lax.scan(
+    _, (ys, xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xsc, xt, pkad1, pkad2, xmed) = lax.scan(
         _step,
-        (x_d10, x_d20, x_c0, x_t0, x_snr0, x_gpe0, x_stn0, x_snc0, pka_d10, pka_d20, x_med0),
+        (x_d10, x_d20, x_c0, x_t0, x_snr0, x_sc0, x_gpe0, x_stn0, x_snc0, pka_d10, pka_d20, x_med0),
         (inputs, opto_stimulation, step_keys),
     )
-    return ys, (xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xt, pkad1, pkad2, xmed)
+    return ys, (xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xsc, xt, pkad1, pkad2, xmed)
 
 
 batched_rnn = vmap(multiregion_rnn, in_axes=(None, None, 0, 0, 0))
