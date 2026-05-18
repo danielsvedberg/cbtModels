@@ -28,7 +28,7 @@ def nln(x):
 
 def bg_nln(x, b):
     #return stmt.bg_nln(x)
-    return sigmoid(4*(x-0.5+b))
+    return sigmoid(4*(x-1+b))
     #clip x min to positive
     #inp = jnp.clip(x-0.5+b, 0, None)
     #return tanh(inp)
@@ -125,6 +125,9 @@ def init_params(
         # Trainable PKA initial states (tonic neuromodulatory baseline).
         "pka_d10": jnp.ones((n_d1,)) * 0.45,
         "pka_d20": jnp.ones((n_d2,)) * 0.55,
+        # Trainable tonic adenosine drive constants.
+        "k_a1r": jnp.array(0.2),  # A1R inhibitory drive on D1 PKA
+        "k_a2r": jnp.array(0.2),  # A2R excitatory drive on D2 PKA
     }
 
     config = {
@@ -141,7 +144,7 @@ def init_params(
         "tau_pka_fall": 500,
         # PKA activation: receptor-mediated cAMP rise is fast (~200ms → 20 steps at dt=10ms).
         "tau_pka_rise": 20.0,
-        # Tonic adenosine drive constants (fixed biology, not learned).
+        # Tonic adenosine drive constants (fallback only — params["k_a1r"]/["k_a2r"] are trainable).
         "k_a1r": 0.2,   # A1R inhibitory drive on D1 PKA
         "k_a2r": 0.2,   # A2R excitatory drive on D2 PKA
         # DA-PKA coupling strengths.
@@ -273,14 +276,15 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     tau_snc = config.get("tau_snc", tau_c)
     tau_pka_fall = config.get("tau_pka_fall", 100.0)
     tau_pka_rise = config.get("tau_pka_rise", 20.0)
-    k_a1r        = config.get("k_a1r",        0.1)
-    k_a2r    = config.get("k_a2r",   0.1)
-    k_d1r    = config.get("k_d1r",   0.2)
-    k_d2r    = config.get("k_d2r",   0.2)
+    # Trainable scalars (prefer params; fall back to config for legacy bundles).
+    k_a1r = jnp.asarray(params["k_a1r"]) if "k_a1r" in params else jnp.asarray(config.get("k_a1r", 0.1))
+    k_a2r = jnp.asarray(params["k_a2r"]) if "k_a2r" in params else jnp.asarray(config.get("k_a2r", 0.1))
+    k_a1r = jnp.clip(k_a1r, 0, 1)
+    k_a2r = jnp.clip(k_a2r, 0, 1)
     snc_pacer_max = config.get("snc_pacer_max", 0.1)
-    stn_pacer_max = config.get("stn_pacer_max", 0.1)
-    snr_pacer_max = config.get("snr_pacer_max", 0.8)
-    gpe_pacer_max = config.get("gpe_pacer_max", 0.25)
+    stn_pacer_max = config.get("stn_pacer_max", 0.5)
+    snr_pacer_max = config.get("snr_pacer_max", 0.5)
+    gpe_pacer_max = config.get("gpe_pacer_max", 0.5)
 
     snc_pacer = sigmoid(p_snc) * snc_pacer_max
     stn_pacer = stn_pacer_max * jnp.ones(j_stn.shape[0])
@@ -342,22 +346,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # g_d2 = jnp.ravel(m_d2 @ x_snc)[0]
 
         # PKA dynamics (asymmetric: fast activation, slow deactivation).
-        #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
-        # pka_d1_target = nln(k_d1r * g_d1 - k_a1r)
-        # rate_d1 = jnp.where(pka_d1_target > pka_d1, 1.0 / tau_pka_rise, 1.0 / tau_pka_fall)
-        # pka_d1 = pka_d1 + rate_d1 * (pka_d1_target - pka_d1)
-        
         pka_d1 = (1.0-(1.0/tau_pka_fall)) * pka_d1
-        pka_d1 = pka_d1 + (1.0/ tau_pka_rise) * (m_d1 @ x_snc - k_a1r)
+        pka_d1 = pka_d1 + jnp.clip((1.0/ tau_pka_rise) * (m_d1 @ x_snc - k_a1r), 0, None)
         pka_d1 = sigmoid(4*(pka_d1-0.5))
 
-        #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
-        # pka_d2_target = nln(k_a2r - k_d2r * g_d2)
-        # rate_d2 = jnp.where(pka_d2_target > pka_d2, 1.0 / tau_pka_rise, 1.0 / tau_pka_fall)
-        # pka_d2 = pka_d2 + rate_d2 * (pka_d2_target - pka_d2)
-        
         pka_d2 = (1.0-(1.0/tau_pka_fall)) * pka_d2
-        pka_d2 = pka_d2 + (1.0/ tau_pka_rise) * (k_a2r - m_d2 @ x_snc)
+        pka_d2 = pka_d2 + jnp.clip((1.0/ tau_pka_rise) * (k_a2r - m_d2 @ x_snc), 0, None)
         pka_d2 = sigmoid(4*(pka_d2-0.5))
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.

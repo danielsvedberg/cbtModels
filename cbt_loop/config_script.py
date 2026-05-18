@@ -56,7 +56,7 @@ TRAINING_CONFIG = {
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.05,
+    "noise_std": 0.015,
     "start_t": jnp.arange(270, 330, 10),
 }
 
