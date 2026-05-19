@@ -22,7 +22,7 @@ RNN_CONFIG = {
     "n_t": 10,
     "g_bg": 1.2,
     "g_nm": 0.5,
-    "noise_std": 0.01,
+    "noise_std": 0.1,
 }
 
 OPTIM_CONFIG = {
@@ -30,12 +30,12 @@ OPTIM_CONFIG = {
 }
 
 RL_CONFIG = {
-    "entropy_coef": 0.1,
+    "entropy_coef": 0.2,
     "baseline_momentum": 0.99,
     "objective_mode": "log_reward",
     "brevity_coef": 0.5,
-    "silence_coef": 0.2,
-    "tail_coef": 0.2,
+    "silence_coef": 0.3,
+    "tail_coef": 0.3,
 }
 
 TASK_CONFIG = {
@@ -56,7 +56,7 @@ TRAINING_CONFIG = {
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.015,
+    "noise_std": 0.15,
     "start_t": jnp.arange(270, 330, 10),
 }
 
@@ -104,8 +104,8 @@ opto_tstart = 250
 opto_start = opto_tstart + 100
 opto_end = opto_start + 175
 
-d1_stim_strength = jnp.arange(0.0, 1.6, 0.3)
-d2_stim_strength = jnp.arange(0.0, 0.8, 0.15)
+d1_stim_strength = jnp.arange(0.0, 0.25, 0.5)
+d2_stim_strength = jnp.arange(0.0, 0.25, 0.5)
 d1_suppress_strength = -d1_stim_strength
 d2_suppress_strength = -d2_stim_strength
 

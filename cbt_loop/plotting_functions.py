@@ -25,8 +25,8 @@ dt = cs.default_config['dt']
 _AREA_LABELS = {
     'D1': 'dSPN',
     'D2': 'iSPN',
-    'pkaD1': 'dSPN excitability',
-    'pkaD2': 'iSPN excitability',
+    'pkaD1': 'dSPN exc.',
+    'pkaD2': 'iSPN exc.',
 }
 
 
@@ -406,6 +406,8 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
     bin_boundaries = np.round(bin_boundaries,2)
 
     bin_labels = [f'{bin_boundaries[i]}-{bin_boundaries[i + 1]}' for i in range(len(bin_boundaries) - 1)]
+    # Midpoint of each response-time bin (used as a thin dashed marker in each panel).
+    bin_midpoints = (bin_boundaries[:-1] + bin_boundaries[1:]) / 2.0
 
     # Initialize lists for binning the xs, ys data
     binned_xs = [[[] for n in range(len(all_xs))] for _ in bin_labels]
@@ -462,6 +464,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
             color=color,
             alpha=0.3,
         )
+        ax.axvline(bin_midpoints[bin_idx], color=color, linestyle='--', linewidth=0.5, alpha=0.7)
     sm = matplotlib.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # Necessary for creating a color bar
     cbar = plt.colorbar(sm, ax=ax)
@@ -513,6 +516,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
                 mean_act + sem_act,
                 alpha=0.3,
                 color=color)
+            ax.axvline(bin_midpoints[bin_idx], color=color, linestyle='--', linewidth=0.5, alpha=0.7)
 
         ax.set_xticks([0, 3])
         # create a second axis on the right, label it with the brain area
@@ -567,6 +571,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
         #sem_act = sem_act[mask]
         color = cmap(norm(bin_idx))
         ax.plot(x_axis, mean_act, label=f'{bin_labels[bin_idx]}', c=color)
+        ax.axvline(bin_midpoints[bin_idx], color=color, linestyle='--', linewidth=0.5, alpha=0.7)
         '''ax.fill_between(
             x_axis,
             mean_act - sem_act,

@@ -62,7 +62,7 @@ def init_params(
     noise_std=0.01,
 ):
     """Initialize multiregion CBT loop params and runtime config."""
-    skeys = jr.split(rng_key, 40)
+    skeys = jr.split(rng_key, 41)
 
     params = {
         "J_c": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[2], (n_c, n_c)),
@@ -88,6 +88,7 @@ def init_params(
         "B_d2_gpe": (1 / math.sqrt(n_d2)) * jr.normal(skeys[24], (n_gpe, n_d2)),
         "B_stn_gpe": (1 / math.sqrt(n_stn)) * jr.normal(skeys[27], (n_gpe, n_stn)),
         "B_gpe_stn": (1 / math.sqrt(n_gpe)) * jr.normal(skeys[25], (n_stn, n_gpe)),
+        "B_gpe_snr": (1 / math.sqrt(n_gpe)) * jr.normal(skeys[40], (n_snr, n_gpe)),  # GPe → SNr (inh)
         "B_c_stn": (1 / math.sqrt(n_c)) * jr.normal(skeys[26], (n_stn, n_c)),  # hyperdirect pathway
         "B_stn_snr": (1 / math.sqrt(n_stn)) * jr.normal(skeys[23], (n_snr, n_stn)),
         "B_snr_t": (1 / math.sqrt(n_snr)) * jr.normal(skeys[6], (n_t, n_snr)),
@@ -122,12 +123,14 @@ def init_params(
         "x_sc0":  jnp.ones((n_sc,))  * 0.1,
         "x_t0":   jnp.ones((n_t,))   * 0.3,
         "x_med0": jnp.ones((n_med,)) * 0.1,
-        # Trainable PKA initial states (tonic neuromodulatory baseline).
-        "pka_d10": jnp.ones((n_d1,)) * 0.45,
-        "pka_d20": jnp.ones((n_d2,)) * 0.55,
-        # Trainable tonic adenosine drive constants.
-        "k_a1r": jnp.array(0.2),  # A1R inhibitory drive on D1 PKA
-        "k_a2r": jnp.array(0.2),  # A2R excitatory drive on D2 PKA
+        # Trainable PKA initial states. Start low so the leaky integrator
+        # builds toward its steady state during the trial instead of starting
+        # already near saturation.
+        "pka_d10": jnp.ones((n_d1,)) * 0.1,
+        "pka_d20": jnp.ones((n_d2,)) * 0.1,
+        # Trainable tonic adenosine drive constants (independent — no ordering enforced).
+        "k_a1r": jnp.array(0.15),  # A1R inhibitory drive on D1 PKA
+        "k_a2r": jnp.array(0.25),  # A2R excitatory drive on D2 PKA
     }
 
     config = {
@@ -144,17 +147,11 @@ def init_params(
         "tau_pka_fall": 500,
         # PKA activation: receptor-mediated cAMP rise is fast (~200ms → 20 steps at dt=10ms).
         "tau_pka_rise": 20.0,
-        # Tonic adenosine drive constants (fallback only — params["k_a1r"]/["k_a2r"] are trainable).
-        "k_a1r": 0.2,   # A1R inhibitory drive on D1 PKA
-        "k_a2r": 0.2,   # A2R excitatory drive on D2 PKA
-        # DA-PKA coupling strengths.
-        "k_d1r": 0.2,    # D1R: DA activates D1 PKA
-        "k_d2r": 0.2,    # D2R: DA inhibits D2 PKA
-        "tau_sc": 10.0,
-        "snc_pacer_max": 0.1,
-        "stn_pacer_max": 0.3,
-        "snr_pacer_max": 0.4,
-        "gpe_pacer_max": 0.3,
+        "tau_sc": 5.0,
+        "snc_pacer_max": 0.2,
+        "stn_pacer_max": 0.2,
+        "snr_pacer_max": 0.8,
+        "gpe_pacer_max": 0.8,
         "noise_std": noise_std,
     }
     return params, config
@@ -181,15 +178,15 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_c0   = _x0("x_c0",   jnp.ones(n_c_)   * 0.1)
     x_d10  = _x0("x_d10",  jnp.ones(n_d1_)  * 0.1)
     x_d20  = _x0("x_d20",  jnp.ones(n_d2_)  * 0.1)
-    x_snc0 = _x0("x_snc0", jnp.ones(n_snc_) * 0.01)
+    x_snc0 = _x0("x_snc0", jnp.ones(n_snc_) * 0.1)
     x_gpe0 = _x0("x_gpe0", jnp.ones(n_gpe_) * 0.1)
     x_stn0 = _x0("x_stn0", jnp.ones(n_stn_) * 0.1)
     x_snr0 = _x0("x_snr0", jnp.ones(n_snr_) * 0.1)
     x_sc0  = _x0("x_sc0",  jnp.ones(n_sc_)  * 0.1)
     x_t0   = _x0("x_t0",   jnp.ones(n_t_)   * 0.3)
     x_med0 = _x0("x_med0", jnp.ones(n_med_) * 0.1)
-    pka_d10 = _x0("pka_d10", jnp.ones(n_d1_) * 0.45)
-    pka_d20 = _x0("pka_d20", jnp.ones(n_d2_) * 0.5)
+    pka_d10 = _x0("pka_d10", jnp.ones(n_d1_) * 0.5)
+    pka_d20 = _x0("pka_d20", jnp.ones(n_d2_) * 0.6)
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
     rng_key, init_key, step_key = jr.split(rng_key, 3)
@@ -230,6 +227,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_d2_gpe = inh(params["B_d2_gpe"])
     b_stn_gpe = exc(params["B_stn_gpe"])
     b_gpe_stn = inh(params["B_gpe_stn"])
+    b_gpe_snr = inh(params["B_gpe_snr"])
     b_c_stn = exc(params["B_c_stn"])  # hyperdirect pathway
     b_stn_snr = exc(params["B_stn_snr"])
     b_snr_t = inh(params["B_snr_t"])
@@ -277,10 +275,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     tau_pka_fall = config.get("tau_pka_fall", 100.0)
     tau_pka_rise = config.get("tau_pka_rise", 20.0)
     # Trainable scalars (prefer params; fall back to config for legacy bundles).
-    k_a1r = jnp.asarray(params["k_a1r"]) if "k_a1r" in params else jnp.asarray(config.get("k_a1r", 0.1))
-    k_a2r = jnp.asarray(params["k_a2r"]) if "k_a2r" in params else jnp.asarray(config.get("k_a2r", 0.1))
-    k_a1r = jnp.clip(k_a1r, 0, 1)
-    k_a2r = jnp.clip(k_a2r, 0, 1)
+    k_a1r_raw = jnp.asarray(params["k_a1r"]) if "k_a1r" in params else jnp.asarray(config.get("k_a1r", 0.1))
+    k_a2r_raw = jnp.asarray(params["k_a2r"]) if "k_a2r" in params else jnp.asarray(config.get("k_a2r", 0.1))
+    # k_a1r and k_a2r are independent — no biological ordering enforced (A1R/A2R are separate cascades).
+    k_a1r = jnp.clip(k_a1r_raw, 0, 1)
+    k_a2r = jnp.clip(k_a2r_raw, 0, 1)
     snc_pacer_max = config.get("snc_pacer_max", 0.1)
     stn_pacer_max = config.get("stn_pacer_max", 0.5)
     snr_pacer_max = config.get("snr_pacer_max", 0.5)
@@ -291,8 +290,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     snr_pacer = sigmoid(p_snr) * snr_pacer_max
     gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
 
-    tau_sc  = config.get("tau_sc",  10.0)
-    tau_med = config.get("tau_med", 10.0)
+    tau_sc  = config.get("tau_sc",  5.0)
+    tau_med = config.get("tau_med", 5.0)
 
     n_steps = inputs.shape[0]
     n_d1_cells = j_d1.shape[0]
@@ -345,14 +344,19 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # g_d1 = jnp.ravel(m_d1 @ x_snc)[0]
         # g_d2 = jnp.ravel(m_d2 @ x_snc)[0]
 
-        # PKA dynamics (asymmetric: fast activation, slow deactivation).
-        pka_d1 = (1.0-(1.0/tau_pka_fall)) * pka_d1
-        pka_d1 = pka_d1 + jnp.clip((1.0/ tau_pka_rise) * (m_d1 @ x_snc - k_a1r), 0, None)
-        pka_d1 = sigmoid(4*(pka_d1-0.5))
+        # PKA dynamics (leaky saturating integrator):
+        # exponential leak with tau_pka_fall, rectified DA-driven production
+        # (receptor activation can't make negative cAMP), tanh-saturating output.
+        # Asymmetric timescales emerge from the gain ratio tau_fall/tau_rise.
+        #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
+        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1
+        pka_d1 = pka_d1 + jnp.clip((1.0 / tau_pka_rise) * (m_d1 @ x_snc - k_a1r), 0, None)
+        pka_d1 = nln(pka_d1)
 
-        pka_d2 = (1.0-(1.0/tau_pka_fall)) * pka_d2
-        pka_d2 = pka_d2 + jnp.clip((1.0/ tau_pka_rise) * (k_a2r - m_d2 @ x_snc), 0, None)
-        pka_d2 = sigmoid(4*(pka_d2-0.5))
+        #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
+        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2
+        pka_d2 = pka_d2 + jnp.clip((1.0 / tau_pka_rise) * (k_a2r - m_d2 @ x_snc), 0, None)
+        pka_d2 = nln(pka_d2)
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
@@ -384,6 +388,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_snr = x_snr + (1.0 / tau_snr) * snr_pacer
         x_snr = x_snr + (1.0 / tau_snr) * (b_d1_snr @ x_d1)
         x_snr = x_snr + (1.0 / tau_snr) * (b_stn_snr @ x_stn)
+        x_snr = x_snr + (1.0 / tau_snr) * (b_gpe_snr @ x_gpe)
         x_snr = nln(x_snr)
 
         # Superior colliculus: free-sign recurrence, exc from cortex, inh from SNr.

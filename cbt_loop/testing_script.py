@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import optax
 import cbt_rnn as cbtl
 import config_script as cfg
 import self_timed_movement_task as stmt
@@ -74,6 +75,7 @@ def _build_weight_matrix(params):
     place("STN",      "STN",      cbtl.exc(params["J_stn"]))
     place("SNr",      "D1",       cbtl.inh(params["B_d1_snr"]))
     place("SNr",      "STN",      cbtl.exc(params["B_stn_snr"]))
+    place("SNr",      "GPe",      cbtl.inh(params["B_gpe_snr"]))
     place("SC",       "Cortex",   cbtl.exc(params["B_c_sc"]))
     place("SC",       "SNr",      cbtl.inh(params["B_snr_sc"]))
     place("SC",       "SC",       params["J_sc"])
@@ -226,6 +228,106 @@ def _safe(label, fn, *args, **kwargs):
     except Exception as exc:  # noqa: BLE001 - we want every plot attempted
         print(f"   [FAIL] {label}: {exc}")
         traceback.print_exc()
+
+
+# ---------------------------------------------------------------------------
+# Lesion utilities
+# ---------------------------------------------------------------------------
+def lesion_nigrostriatal(params):
+    """Zero out the SNc → striatum DA modulation (nigrostriatal projection)."""
+    p = dict(params)
+    p["m_d1"] = jnp.zeros_like(params["m_d1"])
+    p["m_d2"] = jnp.zeros_like(params["m_d2"])
+    return p
+
+
+def lesion_thalamocortical(params):
+    """Zero out the reciprocal thalamus↔cortex (T→C and C→T) pathways."""
+    p = dict(params)
+    p["B_t_c"] = jnp.zeros_like(params["B_t_c"])
+    p["B_c_t"] = jnp.zeros_like(params["B_c_t"])
+    return p
+
+
+def _make_lesioned_rnn_func(rnn_func, lesion_fn):
+    """Wrap rnn_func so `lesion_fn` is reapplied to params on every forward call.
+
+    Because the lesioned weights are replaced by zeros inside the loss, the
+    gradient w.r.t. those raw params is exactly 0, so they stay dead under
+    Adam/AdamW even though they're still nominally trainable.
+    """
+    def lesioned(params, config, batch_inputs, opto_stim, rng_keys):
+        return rnn_func(lesion_fn(params), config, batch_inputs, opto_stim, rng_keys)
+    return lesioned
+
+
+def pd_params_path() -> Path:
+    """Path to the SNc-lesion-retrained parameter bundle."""
+    return Path(cfg.params_path()).parent / "pd_exp_params.pkl"
+
+
+def train_pd_experiment(num_iters=2000, save_path=None):
+    """Lesion SNc→striatum from the current trained bundle and retrain.
+
+    Loads params_nm.pkl, zeros m_d1/m_d2, trains for `num_iters` REINFORCE
+    iterations (lesion reapplied each forward pass), saves the result to
+    pd_exp_params.pkl (lesion still applied) and returns (params, config).
+    """
+    base_params, config = _load_bundle()
+    base_params = lesion_nigrostriatal(base_params)
+
+    task_cfg = cfg.TASK_CONFIG
+    train_cfg = cfg.TRAINING_CONFIG
+    rl_cfg = cfg.RL_CONFIG
+
+    inputs, targets, masks = _build_test_inputs(task_cfg, task_cfg["t_start"])
+
+    optimizer = optax.chain(
+        optax.clip_by_global_norm(1.0),
+        optax.adamw(learning_rate=cfg.OPTIM_CONFIG["learning_rate"]),
+    )
+    lesioned_rnn = _make_lesioned_rnn_func(cbtl.rnn_func, lesion_nigrostriatal)
+
+    best_params, losses, rewards = stmt.fit_rnn_reinforce(
+        lesioned_rnn,
+        base_params,
+        config,
+        inputs,
+        masks,
+        optimizer,
+        num_iters,
+        log_interval=train_cfg["log_interval"],
+        seed=train_cfg["seed"],
+        baseline_momentum=rl_cfg["baseline_momentum"],
+        entropy_coef=rl_cfg["entropy_coef"],
+        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+        batch_targets=targets,
+        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
+        silence_coef=rl_cfg.get("silence_coef", 0.0),
+        tail_coef=rl_cfg.get("tail_coef", 0.0),
+    )
+    # Persist the lesion in the saved bundle (defense against optimizer drift).
+    best_params = lesion_nigrostriatal(best_params)
+
+    save_path = Path(save_path) if save_path else pd_params_path()
+    with save_path.open("wb") as f:
+        pkl.dump({"params": best_params, "config": config}, f)
+    print(f"Saved PD-trained params to: {save_path}")
+    return best_params, config
+
+
+def load_pd_bundle(train_if_missing=True, num_iters=2000, save_path=None):
+    """Load pd_exp_params.pkl, optionally training (with SNc lesion) if absent."""
+    save_path = Path(save_path) if save_path else pd_params_path()
+    if save_path.exists():
+        with save_path.open("rb") as f:
+            bundle = pkl.load(f)
+        return bundle["params"], bundle["config"]
+    if not train_if_missing:
+        raise FileNotFoundError(
+            f"Missing {save_path}; call train_pd_experiment() or pass train_if_missing=True."
+        )
+    return train_pd_experiment(num_iters=num_iters, save_path=save_path)
 
 
 def main():
