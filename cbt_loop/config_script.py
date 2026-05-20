@@ -12,14 +12,18 @@ SEED_CONFIG = {
 }
 
 RNN_CONFIG = {
-    "n_c": 10,
+    "n_c": 12,
     "n_d1": 4,
     "n_d2": 4,
-    "n_snc": 3,
-    "n_snr": 6,
-    "n_gpe": 3,
-    "n_stn": 3,
-    "n_t": 10,
+    "n_snc": 4,
+    "n_snr": 4,
+    "n_gpe": 4,
+    "n_stn": 4,
+    "n_sc": 6,
+    "n_t": 6,
+    "n_med": 4,
+    "n_input":1,
+    "n_output":1,
     "g_bg": 1.2,
     "g_nm": 0.5,
     "noise_std": 0.1,
@@ -30,12 +34,12 @@ OPTIM_CONFIG = {
 }
 
 RL_CONFIG = {
-    "entropy_coef": 0.2,
+    "entropy_coef": 0.01,
     "baseline_momentum": 0.99,
     "objective_mode": "log_reward",
-    "brevity_coef": 0.5,
-    "silence_coef": 0.3,
-    "tail_coef": 0.3,
+    "brevity_coef": 0.2,
+    "silence_coef": 1.0,
+    "tail_coef": 1.0,
 }
 
 TASK_CONFIG = {
@@ -44,12 +48,12 @@ TASK_CONFIG = {
     "t_cue": 10,
     "t_wait": 300,
     "t_movement": 300,
-    "t_total": 900,
+    "t_total": 1000,
     "dt_ms": 10,
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 10000,
+    "num_iters": 20000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
 }
@@ -104,8 +108,8 @@ opto_tstart = 250
 opto_start = opto_tstart + 100
 opto_end = opto_start + 175
 
-d1_stim_strength = jnp.arange(0.0, 0.25, 0.5)
-d2_stim_strength = jnp.arange(0.0, 0.25, 0.5)
+d1_stim_strength = jnp.arange(0.0, 1.0, 0.2)
+d2_stim_strength = jnp.arange(0.0, 1.0, 0.2)
 d1_suppress_strength = -d1_stim_strength
 d2_suppress_strength = -d2_stim_strength
 
