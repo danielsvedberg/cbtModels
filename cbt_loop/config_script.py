@@ -12,15 +12,15 @@ SEED_CONFIG = {
 }
 
 RNN_CONFIG = {
-    "n_c": 12,
+    "n_c": 10,
     "n_d1": 4,
     "n_d2": 4,
     "n_snc": 4,
-    "n_snr": 4,
+    "n_snr": 6,
     "n_gpe": 4,
     "n_stn": 4,
     "n_sc": 6,
-    "n_t": 6,
+    "n_t": 10,
     "n_med": 4,
     "n_input":1,
     "n_output":1,
@@ -37,14 +37,14 @@ RL_CONFIG = {
     "entropy_coef": 0.01,
     "baseline_momentum": 0.99,
     "objective_mode": "log_reward",
-    "brevity_coef": 0.2,
-    "silence_coef": 1.0,
-    "tail_coef": 1.0,
+    "brevity_coef": 0.5,
+    "silence_coef": 0.5,
+    "tail_coef": 0.5,
 }
 
 TASK_CONFIG = {
     "task_mode": "self-timed",  # one of: self_timed, hybrid, pavlovian
-    "t_start": jr.randint(jr.PRNGKey(SEED_CONFIG["task_seed"]), shape=(100,), minval=50, maxval=300),
+    "t_start": jr.randint(jr.PRNGKey(SEED_CONFIG["task_seed"]), shape=(100,), minval=50, maxval=400),
     "t_cue": 10,
     "t_wait": 300,
     "t_movement": 300,
@@ -53,7 +53,7 @@ TASK_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 20000,
+    "num_iters": 50000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
 }
