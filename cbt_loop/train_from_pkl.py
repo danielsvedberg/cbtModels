@@ -81,7 +81,7 @@ def main():
         entropy_coef=rl_cfg["entropy_coef"],
         objective_mode=rl_cfg.get("objective_mode", "log_reward"),
         batch_targets=targets,
-        brevity_coef=0.3,
+        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
         silence_coef=rl_cfg.get("silence_coef", 0.0),
         tail_coef=rl_cfg.get("tail_coef", 0.0),
     )

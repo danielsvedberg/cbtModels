@@ -53,13 +53,13 @@ def init_params(
     n_gpe=6,
     n_stn=6,
     n_sc=6,
-    n_t=10,
+    n_t=6,
     n_med=4,
     n_input=1,
     n_output=1,
     g_bg=0.5,
     g_nm=0.5,
-    noise_std=0.01,
+    noise_std=0.1,
 ):
     """Initialize multiregion CBT loop params and runtime config."""
     skeys = jr.split(rng_key, 41)
@@ -102,8 +102,8 @@ def init_params(
         "m_d1": (1 / math.sqrt(n_snc)) * jr.normal(skeys[10], (1, n_snc)),
         "m_d2": (1 / math.sqrt(n_snc)) * jr.normal(skeys[11], (1, n_snc)),
         # Lateral inhibition between D1 and D2 populations.
-        "B_d1_d2": (g_bg / math.sqrt(n_d1)) * jr.normal(skeys[16], (n_d2, n_d1)),  # D1 → D2 (inh)
-        "B_d2_d1": (g_bg / math.sqrt(n_d2)) * jr.normal(skeys[31], (n_d1, n_d2)),  # D2 → D1 (inh)
+        # "B_d1_d2": (g_bg / math.sqrt(n_d1)) * jr.normal(skeys[16], (n_d2, n_d1)),  # D1 → D2 (inh)
+        # "B_d2_d1": (g_bg / math.sqrt(n_d2)) * jr.normal(skeys[31], (n_d1, n_d2)),  # D2 → D1 (inh)
         # Medullary area: two E/I pairs (E0,I0) and (E1,I1) coupled reciprocally.
         # Each 2×2 block: col 0 = from E (exc), col 1 = from I (inh).
         "J_med_w1": (g_bg / math.sqrt(2)) * jr.normal(skeys[13], (2, 2)),  # within pair 1
@@ -148,10 +148,10 @@ def init_params(
         # PKA activation: receptor-mediated cAMP rise is fast (~200ms → 20 steps at dt=10ms).
         "tau_pka_rise": 20.0,
         "tau_sc": 5.0,
-        "snc_pacer_max": 0.2,
-        "stn_pacer_max": 0.2,
-        "snr_pacer_max": 0.8,
-        "gpe_pacer_max": 0.8,
+        "snc_pacer_max": 0.1,
+        "stn_pacer_max": 0.3,
+        "snr_pacer_max": 0.7,
+        "gpe_pacer_max": 0.5,
         "noise_std": noise_std,
     }
     return params, config
@@ -186,7 +186,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_t0   = _x0("x_t0",   jnp.ones(n_t_)   * 0.3)
     x_med0 = _x0("x_med0", jnp.ones(n_med_) * 0.1)
     pka_d10 = _x0("pka_d10", jnp.ones(n_d1_) * 0.5)
-    pka_d20 = _x0("pka_d20", jnp.ones(n_d2_) * 0.6)
+    pka_d20 = _x0("pka_d20", jnp.ones(n_d2_) * 0.5)
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
     rng_key, init_key, step_key = jr.split(rng_key, 3)
@@ -241,8 +241,10 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     m_d2 = exc(params["m_d2"])
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
-    b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition
-    b_d2_d1 = inh(params.get("B_d2_d1", _zeros_d2_d1))  # D2 → D1 lateral inhibition
+    # b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition
+    # b_d2_d1 = inh(params.get("B_d2_d1", _zeros_d2_d1))  # D2 → D1 lateral inhibition
+    b_d1_d2 = jnp.zeros(_zeros_d1_d2.shape)  # D1 → D2 disabled
+    b_d2_d1 = jnp.zeros(_zeros_d2_d1.shape)  # D2 → D1 disabled
     # Medullary E/I pairs. Each 2×2 block: col 0 from E (exc), col 1 from I (inh).
     def _med_block(raw):
         return jnp.concatenate([exc(raw[:, :1]), inh(raw[:, 1:])], axis=1)
@@ -280,10 +282,10 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # k_a1r and k_a2r are independent — no biological ordering enforced (A1R/A2R are separate cascades).
     k_a1r = jnp.clip(k_a1r_raw, 0, 1)
     k_a2r = jnp.clip(k_a2r_raw, 0, 1)
-    snc_pacer_max = config.get("snc_pacer_max", 0.1)
-    stn_pacer_max = config.get("stn_pacer_max", 0.5)
-    snr_pacer_max = config.get("snr_pacer_max", 0.5)
-    gpe_pacer_max = config.get("gpe_pacer_max", 0.5)
+    snc_pacer_max = config.get("snc_pacer_max", 0.2)
+    stn_pacer_max = config.get("stn_pacer_max", 0.2)
+    snr_pacer_max = config.get("snr_pacer_max", 0.8)
+    gpe_pacer_max = config.get("gpe_pacer_max", 0.8)
 
     snc_pacer = sigmoid(p_snc) * snc_pacer_max
     stn_pacer = stn_pacer_max * jnp.ones(j_stn.shape[0])

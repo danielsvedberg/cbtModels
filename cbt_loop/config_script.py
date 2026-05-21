@@ -13,12 +13,12 @@ SEED_CONFIG = {
 
 RNN_CONFIG = {
     "n_c": 10,
-    "n_d1": 4,
-    "n_d2": 4,
+    "n_d1": 6,
+    "n_d2": 6,
     "n_snc": 4,
     "n_snr": 6,
-    "n_gpe": 4,
-    "n_stn": 4,
+    "n_gpe": 6,
+    "n_stn": 6,
     "n_sc": 6,
     "n_t": 10,
     "n_med": 4,
@@ -26,7 +26,7 @@ RNN_CONFIG = {
     "n_output":1,
     "g_bg": 1.2,
     "g_nm": 0.5,
-    "noise_std": 0.1,
+    "noise_std": 0.01,
 }
 
 OPTIM_CONFIG = {
@@ -53,14 +53,14 @@ TASK_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 50000,
+    "num_iters": 20000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
 }
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.15,
+    "noise_std": 0.05,
     "start_t": jnp.arange(270, 330, 10),
 }
 
