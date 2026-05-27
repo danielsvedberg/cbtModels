@@ -8,13 +8,15 @@ import optax
 
 
 def exc(w):
-    #return jnp.maximum(0, w)
-    return jnp.abs(w)
+    #return jax.nn.softplus(w)
+    return jnp.maximum(0, w)
+    #return jnp.abs(w)
 
 
 def inh(w):
-    return -jnp.abs(w)
-    #return -jnp.maximum(0, w)
+    #return -exc(w)
+    #return -jnp.abs(w)
+    return -jnp.maximum(0, w)
 
 
 def nln(x):
@@ -78,6 +80,60 @@ def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=F
 
     inputs, outputs, masks = vmap(_single)(jnp.arange(num_starts))
 
+    return inputs, outputs, masks
+
+
+def pavlovian_task(T_start, T_cue, T_response, T, null_trial=False):
+    """
+    Pavlovian conditioning task.
+
+    A single cue is delivered to cortex at a random time within the trial
+    (T_start is expected to be drawn within [50, T - 50]). The network is
+    reinforced for responding immediately after cue offset.
+
+    - Cue starts at T_start[i] and lasts T_cue.
+    - Response window opens at cue offset and lasts T_response.
+    - The brevity shaping term (applied in ``reinforce_loss``) pushes the
+      response toward the very start of that window, i.e. immediately after
+      the cue. The silence/tail terms penalize activity before the cue and
+      after the window, respectively.
+
+    Arguments:
+    T_start:    array of cue onset times (timesteps), drawn within [50, T-50].
+    T_cue:      cue duration (timesteps).
+    T_response: duration of the rewarded response window (timesteps).
+    T:          total trial length (timesteps).
+    null_trial: if True, omit the cue (cue-absent control).
+
+    Returns:
+    inputs:  (num_starts, T, 1) binary cue time series.
+    outputs: (num_starts, T, 1) target (1 within the response window).
+    masks:   (num_starts, T, 1) loss mask (all ones — silence/tail penalized).
+    """
+    num_starts = T_start.shape[0]
+    time_idx = jnp.arange(T)
+
+    def _single(interval_ind):
+        t_start = T_start[interval_ind]
+        t_cue_end = t_start + T_cue
+        t_resp_end = t_cue_end + T_response
+
+        # Cue input to cortex.
+        inputs = jnp.zeros((T, 1))
+        if not null_trial:
+            inputs = jax.lax.dynamic_update_slice(inputs, jnp.ones((T_cue, 1)), (t_start, 0))
+
+        # Response window opens at cue offset. Built with a boolean mask so a
+        # late cue simply yields a truncated (not shifted) window.
+        in_window = (time_idx >= t_cue_end) & (time_idx < t_resp_end)
+        outputs = in_window.astype(jnp.float32)[:, None]
+
+        # Full mask: silence (pre-cue) and tail (post-window) activity penalized.
+        masks = jnp.ones((T, 1))
+
+        return inputs, outputs, masks
+
+    inputs, outputs, masks = vmap(_single)(jnp.arange(num_starts))
     return inputs, outputs, masks
 
 
@@ -386,6 +442,10 @@ def reinforce_loss(
     brevity_coef=0.0,
     silence_coef=0.0,
     tail_coef=0.0,
+    asym_coef=0.0,
+    asym_margin=1.0,
+    rest_pka_coef=0.0,
+    rest_pka_margin=1.0,
 ):
     """
     Direct objective options for STMT optimization.
@@ -403,9 +463,20 @@ def reinforce_loss(
     ``silence_coef`` penalizes off-window activity, and ``tail_coef``
     penalizes activity after the response window ends.
 
+    ``asym_coef`` enforces biological asymmetry of striatonigral projections:
+    dSPN→SNc should be stronger than iSPN→SNc. Penalizes
+    ``max(0, ||inh(B_d2_snc)|| - asym_margin * ||inh(B_d1_snc)||)^2`` only
+    when both keys exist in ``params``.
+
+    ``rest_pka_coef`` enforces D1 < D2 PKA asymmetry on the *runtime*
+    pre-cue PKA trajectories (averaged over t < cue_onset and over neurons),
+    not just the initial scalars. Penalizes
+    ``max(0, mean_pre(pka_d1) - rest_pka_margin * mean_pre(pka_d2))^2`` when
+    the rnn_func returns the PKA traces.
+
     ``rng_keys`` are kept for API compatibility.
     """
-    ys, _, _ = rnn_func(params, config, batch_inputs, None, rng_keys)
+    ys, pkad1_traj, pkad2_traj = rnn_func(params, config, batch_inputs, None, rng_keys)
     probs = jnp.clip(ys[..., 0], 1e-6, 1.0 - 1e-6)  # (batch, T)
     batch_size, T = probs.shape
     eps = 1e-7
@@ -503,7 +574,40 @@ def reinforce_loss(
     entropy_t = -(probs * jnp.log(probs) + (1.0 - probs) * jnp.log(1.0 - probs))
     entropy = jnp.sum(entropy_t * entropy_mask) / (jnp.sum(entropy_mask) + 1e-8)
 
-    total_loss = pg_loss - entropy_coef * entropy + brevity_term + silence_loss + tail_loss
+    # dSPN→SNc should be stronger than iSPN→SNc (biological asymmetry).
+    if "B_d1_snc" in params and "B_d2_snc" in params:
+        d1_norm = jnp.linalg.norm(inh(params["B_d1_snc"]))
+        d2_norm = jnp.linalg.norm(inh(params["B_d2_snc"]))
+        asym_loss = asym_coef * jnp.square(jnp.maximum(0.0, d2_norm - asym_margin * d1_norm))
+    else:
+        asym_loss = jnp.array(0.0, dtype=probs.dtype)
+
+    # Runtime resting PKA: average pkad1/pkad2 over the pre-cue window per trial,
+    # then enforce D1 < margin * D2 across the batch. The cue is identified from
+    # input channel 0 (consistent with the reward-window code above).
+    if pkad1_traj is not None and pkad2_traj is not None:
+        cue_indicator_for_rest = batch_inputs[..., 0] > 0.5
+        cue_onsets_for_rest = jnp.argmax(cue_indicator_for_rest, axis=1)  # (batch,)
+        t_idx_rest = jnp.arange(T)[None, :]                                # (1, T)
+        pre_cue_mask = (t_idx_rest < cue_onsets_for_rest[:, None]).astype(probs.dtype)
+        pre_cue_count = jnp.sum(pre_cue_mask, axis=1) + 1e-8                # (batch,)
+        # pkad1_traj / pkad2_traj: (batch, T, n) — average over neurons → (batch, T).
+        pkad1_pop = jnp.mean(pkad1_traj, axis=-1)
+        pkad2_pop = jnp.mean(pkad2_traj, axis=-1)
+        pre_d1 = jnp.sum(pkad1_pop * pre_cue_mask, axis=1) / pre_cue_count
+        pre_d2 = jnp.sum(pkad2_pop * pre_cue_mask, axis=1) / pre_cue_count
+        mean_pre_d1 = jnp.mean(pre_d1)
+        mean_pre_d2 = jnp.mean(pre_d2)
+        rest_pka_loss = rest_pka_coef * jnp.square(
+            jnp.maximum(0.0, mean_pre_d1 - rest_pka_margin * mean_pre_d2)
+        )
+    else:
+        rest_pka_loss = jnp.array(0.0, dtype=probs.dtype)
+
+    total_loss = (
+        pg_loss - entropy_coef * entropy + brevity_term + silence_loss + tail_loss
+        + asym_loss + rest_pka_loss
+    )
     aux = {
         "success_rate": mean_p_reward,
         "reward_mean": mean_p_reward,
@@ -514,6 +618,8 @@ def reinforce_loss(
         "expected_norm_time": jnp.mean(expected_norm_time),
         "silence_loss": silence_loss,
         "tail_loss": tail_loss,
+        "asym_loss": asym_loss,
+        "rest_pka_loss": rest_pka_loss,
     }
     return total_loss, aux
 
@@ -535,6 +641,10 @@ def fit_rnn_reinforce(
     brevity_coef=0.0,
     silence_coef=0.0,
     tail_coef=0.0,
+    asym_coef=0.0,
+    asym_margin=1.0,
+    rest_pka_coef=0.0,
+    rest_pka_margin=1.0,
 ):
     """
     Train an RNN policy with REINFORCE on the binary STMT objective.
@@ -570,6 +680,10 @@ def fit_rnn_reinforce(
                 brevity_coef,
                 silence_coef,
                 tail_coef,
+                asym_coef,
+                asym_margin,
+                rest_pka_coef,
+                rest_pka_margin,
             ),
             has_aux=True,
         )(cur_params)
@@ -589,6 +703,8 @@ def fit_rnn_reinforce(
             aux["expected_norm_time"],
             aux["silence_loss"],
             aux["tail_loss"],
+            aux["asym_loss"],
+            aux["rest_pka_loss"],
         )
 
     losses = []
@@ -607,6 +723,8 @@ def fit_rnn_reinforce(
             norm_time_vals,
             silence_vals,
             tail_vals,
+            asym_vals,
+            rest_pka_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key, baseline),
@@ -623,6 +741,8 @@ def fit_rnn_reinforce(
         last_norm_time = float(norm_time_vals[-1])
         last_silence = float(silence_vals[-1])
         last_tail = float(tail_vals[-1])
+        last_asym = float(asym_vals[-1])
+        last_rest_pka = float(rest_pka_vals[-1])
 
         losses.append(last_loss)
         reward_means.append(last_reward)
@@ -632,7 +752,8 @@ def fit_rnn_reinforce(
             f"loss: {last_loss:.6f}, reward: {last_reward:.4f}, "
             f"log_reward: {last_log_reward:.4f}, success: {last_success:.4f}, entropy: {last_entropy:.4f}, "
             f"brevity: {last_brevity:.4f}, norm_resp_time: {last_norm_time:.3f}, "
-            f"silence: {last_silence:.4f}, tail: {last_tail:.4f}"
+            f"silence: {last_silence:.4f}, tail: {last_tail:.4f}, asym: {last_asym:.4f}, "
+            f"rest_pka: {last_rest_pka:.4f}"
         )
 
         if last_loss < best_loss:

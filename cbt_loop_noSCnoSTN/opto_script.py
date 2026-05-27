@@ -31,7 +31,6 @@ def load_bundle():
         n_snc=params["P_snc"].shape[0],
         n_snr=params["P_snr"].shape[0],
         n_gpe=params["J_gpe"].shape[0],
-        n_stn=params["J_stn"].shape[0],
         n_t=params["J_t"].shape[0],
         n_med=params["J_med_w1"].shape[0] * 2,
         n_input=1,

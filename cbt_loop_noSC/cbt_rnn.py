@@ -49,10 +49,10 @@ def match_input_channels(inputs, params):
 
 # Canonical state tuple order used across CBT loop code.
 STATE_VAR_ORDER = (
-    "x_c", "x_d1", "x_d2", "x_snc", "x_gpe", "x_stn", "x_snr", "x_sc", "x_t", "pka_d1", "pka_d2", "x_med",
+    "x_c", "x_d1", "x_d2", "x_snc", "x_gpe", "x_stn", "x_snr", "x_t", "pka_d1", "pka_d2", "x_med",
 )
 STATE_AREA_ORDER = (
-    "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "SC", "Thalamus", "pkaD1", "pkaD2", "Medulla",
+    "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "Thalamus", "pkaD1", "pkaD2", "Medulla",
 )
 
 
@@ -65,7 +65,6 @@ def init_params(
     n_snr=6,
     n_gpe=6,
     n_stn=6,
-    n_sc=6,
     n_t=6,
     n_med=4,
     n_input=1,
@@ -105,13 +104,6 @@ def init_params(
         "B_c_stn": (1 / math.sqrt(n_c)) * jr.normal(skeys[26], (n_stn, n_c)),  # hyperdirect pathway
         "B_stn_snr": (1 / math.sqrt(n_stn)) * jr.normal(skeys[23], (n_snr, n_stn)),
         "B_snr_t": (1 / math.sqrt(n_snr)) * jr.normal(skeys[6], (n_t, n_snr)),
-        # Superior colliculus. J_sc is free-sign (unconstrained recurrence).
-        # skeys[39] is the new slot; skeys[34] is taken by P_gpe.
-        "J_sc":     (g_bg / math.sqrt(n_sc)) * jr.normal(skeys[39], (n_sc, n_sc)),
-        "B_c_sc":   (1 / math.sqrt(n_c))   * jr.normal(skeys[35], (n_sc, n_c)),
-        "B_snr_sc": (1 / math.sqrt(n_snr)) * jr.normal(skeys[36], (n_sc, n_snr)),
-        "B_sc_t":   (1 / math.sqrt(n_sc))  * jr.normal(skeys[37], (n_t,  n_sc)),
-        "B_sc_med": (1 / math.sqrt(n_sc))  * jr.normal(skeys[38], (n_med // 2, n_sc)),
         # Dopamine→PKA gains: per-neuron (n_d, n_snc) so each striatal neuron
         # has its own dopamine sensitivity (no shared population PKA).
         "m_d1": (1 / math.sqrt(n_snc)) * jr.normal(skeys[10], (n_d1, n_snc)),
@@ -135,7 +127,6 @@ def init_params(
         "x_gpe0": jnp.ones((n_gpe,)) * 0.1,
         "x_stn0": jnp.ones((n_stn,)) * 0.1,
         "x_snr0": jnp.ones((n_snr,)) * 0.1,
-        "x_sc0":  jnp.ones((n_sc,))  * 0.1,
         "x_t0":   jnp.ones((n_t,))   * 0.3,
         "x_med0": jnp.ones((n_med,)) * 0.1,
         # Trainable PKA initial states. Start low so the leaky integrator
@@ -162,7 +153,6 @@ def init_params(
         "tau_pka_fall": 1440.0,
         # PKA activation: receptor-mediated cAMP rise is fast (~200ms → 20 steps at dt=10ms).
         "tau_pka_rise": 2500,
-        "tau_sc": 5.0,
         # Dopamine→PKA gain bounds. m_d1 (excitatory drive on D1 PKA) is
         # floored so it stays ≥ m_floor. m_d2 (subtracted/inhibitory term in
         # the D2 PKA drive) is capped at m_cap so it stays comparable to k_a2r.
@@ -193,7 +183,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     n_gpe_ = params["J_gpe"].shape[0]
     n_stn_ = params["J_stn"].shape[0]
     n_snr_ = params["P_snr"].shape[0]
-    n_sc_  = params["J_sc"].shape[0]
     n_t_   = params["J_t"].shape[0]
     n_med_ = params["J_med_w1"].shape[0] * 2
 
@@ -204,7 +193,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_gpe0 = _x0("x_gpe0", jnp.ones(n_gpe_) * 0.1)
     x_stn0 = _x0("x_stn0", jnp.ones(n_stn_) * 0.1)
     x_snr0 = _x0("x_snr0", jnp.ones(n_snr_) * 0.1)
-    x_sc0  = _x0("x_sc0",  jnp.ones(n_sc_)  * 0.1)
     x_t0   = _x0("x_t0",   jnp.ones(n_t_)   * 0.3)
     x_med0 = _x0("x_med0", jnp.ones(n_med_) * 0.1)
     pka_d10 = _x0("pka_d10", jnp.ones(n_d1_) * 0.4)
@@ -221,7 +209,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_gpe0 = nln(x_gpe0 + noise_std * jr.normal(init_key, x_gpe0.shape))
     x_stn0 = nln(x_stn0 + noise_std * jr.normal(init_key, x_stn0.shape))
     x_snr0 = nln(x_snr0 + noise_std * jr.normal(init_key, x_snr0.shape))
-    x_sc0  = nln(x_sc0  + noise_std * jr.normal(init_key, x_sc0.shape))
     x_t0 = nln(x_t0 + noise_std * jr.normal(init_key, x_t0.shape))
     x_med0 = nln(x_med0 + noise_std * jr.normal(init_key, x_med0.shape))
     pka_d10 = jnp.maximum(nln(pka_d10), 0.1)
@@ -255,12 +242,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_c_stn = exc(params["B_c_stn"])  # hyperdirect pathway
     b_stn_snr = exc(params["B_stn_snr"])
     b_snr_t = inh(params["B_snr_t"])
-    # Superior colliculus: free-sign recurrence, exc from cortex, inh from SNr, exc to thalamus and medulla.
-    j_sc     = params["J_sc"]
-    b_c_sc   = exc(params["B_c_sc"])
-    b_snr_sc = inh(params["B_snr_sc"])
-    b_sc_t   = exc(params["B_sc_t"])
-    b_sc_med = exc(params["B_sc_med"])
     # Dopamine→PKA gains. D1: floored softplus keeps the (excitatory) drive
     # gain ≥ m_floor with a live gradient (no dead zone). D2: dopamine is the
     # *subtracted* term in the D2 PKA drive, so cap it small (m_cap·sigmoid) to
@@ -325,7 +306,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     snr_pacer = snr_pacer_min * sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
     gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
 
-    tau_sc  = config.get("tau_sc",  5.0)
     tau_med = config.get("tau_med", 5.0)
 
     n_steps = inputs.shape[0]
@@ -335,20 +315,19 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         opto_stimulation = jnp.zeros((n_steps, n_d1_cells + n_d2_cells))
 
     def _step(carry, inp_stim_rng):
-        x_d1, x_d2, x_c, x_t, x_snr, x_sc, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med = carry
+        x_d1, x_d2, x_c, x_t, x_snr, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med = carry
         u_t, stim_t, step_rng = inp_stim_rng
         stim_d1 = stim_t[:n_d1_cells]
         stim_d2 = stim_t[n_d1_cells:]
 
         # add noise
-        rng_d1, rng_d2, rng_c, rng_t, rng_snr, rng_sc, rng_gpe, rng_stn, rng_snc, rng_med = jr.split(step_rng, 10)
+        rng_d1, rng_d2, rng_c, rng_t, rng_snr, rng_gpe, rng_stn, rng_snc, rng_med = jr.split(step_rng, 9)
         coef = noise_std / jnp.sqrt(2.0 * tau_c)
         x_d1 = x_d1 + coef * jr.normal(rng_d1, x_d1.shape)
         x_d2 = x_d2 + coef * jr.normal(rng_d2, x_d2.shape)
         x_c = x_c + coef * jr.normal(rng_c, x_c.shape)
         x_t = x_t + coef * jr.normal(rng_t, x_t.shape)
         x_snr = x_snr + coef * jr.normal(rng_snr, x_snr.shape)
-        x_sc = x_sc + coef * jr.normal(rng_sc, x_sc.shape)
         x_gpe = x_gpe + coef * jr.normal(rng_gpe, x_gpe.shape)
         x_stn = x_stn + coef * jr.normal(rng_stn, x_stn.shape)
         coef_snc = noise_std / jnp.sqrt(2.0 * tau_snc)
@@ -364,7 +343,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_t = (1.0 - (1.0 / tau_t)) * x_t + (1.0 / tau_t) * (j_t @ x_t)
         x_t = x_t + (1.0 / tau_t) * (b_c_t @ x_c)
         x_t = x_t + (1.0 / tau_t) * (b_snr_t @ x_snr)
-        x_t = x_t + (1.0 / tau_t) * (b_sc_t @ x_sc)
         x_t = nln(x_t)
 
         x_snc = (1.0 - (1.0 / tau_snc)) * x_snc
@@ -426,33 +404,26 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_snr = x_snr + (1.0 / tau_snr) * (b_gpe_snr @ x_gpe)
         x_snr = nln(x_snr)
 
-        # Superior colliculus: free-sign recurrence, exc from cortex, inh from SNr.
-        x_sc = (1.0 - (1.0 / tau_sc)) * x_sc + (1.0 / tau_sc) * (j_sc @ x_sc)
-        x_sc = x_sc + (1.0 / tau_sc) * (b_c_sc @ x_c)
-        x_sc = x_sc + (1.0 / tau_sc) * (b_snr_sc @ x_snr)
-        x_sc = nln(x_sc)
-
         # medulla: two E/I pairs with reciprocal coupling; cortical drive to E units only
         x_med = (1.0 - (1.0 / tau_med)) * x_med + (1.0 / tau_med) * (j_med @ x_med)
         x_med = x_med.at[:2].add((1.0 / tau_med) * (b_c_med @ x_c))
-        x_med = x_med.at[:2].add((1.0 / tau_med) * (b_sc_med @ x_sc))
         x_med = nln(x_med)
         
 
         #y_t = sigmoid(4.0 * (c_med @ x_med) - 0.5)
         y_t = nln(c_med @ x_med[:2])  # readout from E units only
 
-        new_carry = (x_d1, x_d2, x_c, x_t, x_snr, x_sc, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med)
-        out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_stn, x_snr, x_sc, x_t, pka_d1, pka_d2, x_med)
+        new_carry = (x_d1, x_d2, x_c, x_t, x_snr, x_gpe, x_stn, x_snc, pka_d1, pka_d2, x_med)
+        out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_stn, x_snr, x_t, pka_d1, pka_d2, x_med)
         return new_carry, out
 
     step_keys = jr.split(step_key, n_steps)
-    _, (ys, xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xsc, xt, pkad1, pkad2, xmed) = lax.scan(
+    _, (ys, xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xt, pkad1, pkad2, xmed) = lax.scan(
         _step,
-        (x_d10, x_d20, x_c0, x_t0, x_snr0, x_sc0, x_gpe0, x_stn0, x_snc0, pka_d10, pka_d20, x_med0),
+        (x_d10, x_d20, x_c0, x_t0, x_snr0, x_gpe0, x_stn0, x_snc0, pka_d10, pka_d20, x_med0),
         (inputs, opto_stimulation, step_keys),
     )
-    return ys, (xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xsc, xt, pkad1, pkad2, xmed)
+    return ys, (xc, xd1, xd2, xsnc, xgpe, xstn, xsnr, xt, pkad1, pkad2, xmed)
 
 
 batched_rnn = vmap(multiregion_rnn, in_axes=(None, None, 0, 0, 0))

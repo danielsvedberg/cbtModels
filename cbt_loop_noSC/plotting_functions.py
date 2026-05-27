@@ -14,8 +14,8 @@ import numpy as np
 #import filter for gaussian smoothing
 from scipy.ndimage import gaussian_filter1d
 from scipy import stats
-import cbt_loop.cbt_rnn as cl
-import cbt_loop.config_script as cs
+import cbt_rnn as cl
+import config_script as cs
 import jax.numpy as jnp
 import self_timed_movement_task as stmt
 
@@ -80,7 +80,7 @@ def plot_output(all_ys):
 
 
 def plot_activity_by_area(all_xs, all_zs=None):
-    areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus', 'Medulla']
+    areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus', 'Medulla']
     fig, axs = plt.subplots(len(areas), 2, figsize=(6, 1.5 * len(areas)), sharex=True)
     for idx, name in enumerate(areas):
         area_activity = cl.get_brain_area(name, all_xs)
@@ -131,7 +131,7 @@ def plot_cue_algn_activity(all_xs, noiseless=False, ys=None):
     x_axis = (jnp.arange(new_T + 100) - 100) / 100
 
     # Brain areas plus D1/D2 PKA excitability traces (pkaD1, pkaD2).
-    area_list = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
+    area_list = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus',
                  'Medulla', 'pkaD1', 'pkaD2']
     n_area_rows = len(area_list)
     n_rows = n_area_rows + 1 if ys is not None else n_area_rows
@@ -480,7 +480,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
 
     # Plot activity in each brain area for different response time bins (mean ± SEM).
     # pkaD1 / pkaD2 are included as their own dSPN/iSPN excitability rows.
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
+    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus',
                    'Medulla', 'pkaD1', 'pkaD2']
     cmap = plt.cm.get_cmap('turbo')
     norm = matplotlib.colors.Normalize(vmin=0, vmax=len(bin_labels) - 1)
@@ -594,7 +594,7 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
 
     opto_ys / opto_xs are 3-element lists [control, perturb dSPN, perturb iSPN].
     """
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
+    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus',
                    'Medulla', 'pkaD1', 'pkaD2']
 
     # CDF of response times.
@@ -705,7 +705,7 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
     n_stims = len(cols)
 
     stim_labels = ['inh. dSPN', 'inh. iSPN', 'stim. dSPN', 'stim. iSPN']
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
+    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus',
                    'Medulla', 'pkaD1', 'pkaD2']
 
     cue_start_t = 0
@@ -1078,7 +1078,7 @@ def plot_binned_pnr(all_ys, all_xs, all_zs=None, conditions=None, xlabel='', tit
     save_fig(fig_y, f'{filename}_outputs')
     
     # 2. Plot Brain Area Activities (incl. Medulla and D1/D2 PKA excitability rows)
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
+    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'Thalamus',
                    'Medulla', 'pkaD1', 'pkaD2']
     fig_a, axs_a = plt.subplots(len(brain_areas), 1,
                                 figsize=(1.8, 0.75 * len(brain_areas)), sharex=True)

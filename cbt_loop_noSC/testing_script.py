@@ -28,7 +28,6 @@ def _build_weight_matrix(params):
     n_gpe = params["J_gpe"].shape[0]
     n_stn = params["J_stn"].shape[0]
     n_snr = params["P_snr"].shape[0]
-    n_sc  = params["J_sc"].shape[0]
     n_t   = params["J_t"].shape[0]
     n_med = params["J_med_w1"].shape[0] * 2  # 2 E + 2 I units
     n_in  = params["B_cue_c"].shape[1]   # number of input channels
@@ -36,8 +35,8 @@ def _build_weight_matrix(params):
 
     # Input/Adenosine/Output are border areas: Input and Adenosine are tonic
     # sources (thin source lines), Output is a thin readout line.
-    areas = ["Input", "Adenosine", "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "SC", "Thalamus", "Medulla", "Output"]
-    sizes = [n_in, 1, n_c, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_sc, n_t, n_med, n_out]
+    areas = ["Input", "Adenosine", "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "Thalamus", "Medulla", "Output"]
+    sizes = [n_in, 1, n_c, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_t, n_med, n_out]
 
     offsets = {}
     off = 0
@@ -99,16 +98,8 @@ def _build_weight_matrix(params):
     place("SNr",      "D1",       cbtl.inh(params["B_d1_snr"]))
     place("SNr",      "STN",      cbtl.exc(params["B_stn_snr"]))
     place("SNr",      "GPe",      cbtl.inh(params["B_gpe_snr"]))
-    place("SC",       "Cortex",   cbtl.exc(params["B_c_sc"]))
-    place("SC",       "SNr",      cbtl.inh(params["B_snr_sc"]))
-    place("SC",       "SC",       params["J_sc"])
     place("Thalamus", "Cortex",   cbtl.exc(params["B_c_t"]))
     place("Thalamus", "SNr",      cbtl.inh(params["B_snr_t"]))
-    place("Thalamus", "SC",       cbtl.exc(params["B_sc_t"]))
-    # SC projects to E units only (first 2 rows of Medulla).
-    r0 = offsets["Medulla"][0]
-    c0, c1 = offsets["SC"]
-    W[r0:r0 + 2, c0:c1] = np.array(cbtl.exc(params["B_sc_med"]))
     place("Thalamus", "Thalamus", params["J_t"])
     def _med_block(raw):
         return np.concatenate([np.array(cbtl.exc(raw[:, :1])), np.array(cbtl.inh(raw[:, 1:]))], axis=1)

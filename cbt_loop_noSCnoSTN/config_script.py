@@ -18,8 +18,6 @@ RNN_CONFIG = {
     "n_snc": 4,
     "n_snr": 6,
     "n_gpe": 6,
-    "n_stn": 6,
-    "n_sc": 6,
     "n_t": 10,
     "n_med": 4,
     "n_input":1,

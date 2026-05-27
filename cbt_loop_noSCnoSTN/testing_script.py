@@ -26,9 +26,7 @@ def _build_weight_matrix(params):
     n_d2  = params["J_d2"].shape[0]
     n_snc = params["P_snc"].shape[0]
     n_gpe = params["J_gpe"].shape[0]
-    n_stn = params["J_stn"].shape[0]
     n_snr = params["P_snr"].shape[0]
-    n_sc  = params["J_sc"].shape[0]
     n_t   = params["J_t"].shape[0]
     n_med = params["J_med_w1"].shape[0] * 2  # 2 E + 2 I units
     n_in  = params["B_cue_c"].shape[1]   # number of input channels
@@ -36,8 +34,8 @@ def _build_weight_matrix(params):
 
     # Input/Adenosine/Output are border areas: Input and Adenosine are tonic
     # sources (thin source lines), Output is a thin readout line.
-    areas = ["Input", "Adenosine", "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "SC", "Thalamus", "Medulla", "Output"]
-    sizes = [n_in, 1, n_c, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_sc, n_t, n_med, n_out]
+    areas = ["Input", "Adenosine", "Cortex", "D1", "D2", "SNc", "GPe", "SNr", "Thalamus", "Medulla", "Output"]
+    sizes = [n_in, 1, n_c, n_d1, n_d2, n_snc, n_gpe, n_snr, n_t, n_med, n_out]
 
     offsets = {}
     off = 0
@@ -68,7 +66,6 @@ def _build_weight_matrix(params):
     if "B_d1_d2" in params:
         place("D2",       "D1",       cbtl.inh(params["B_d1_d2"]))
     place("SNc",      "Cortex",   cbtl.exc(params["B_c_snc"]))
-    place("SNc",      "STN",      cbtl.exc(params["B_stn_snc"]))
     place("SNc",      "D1",       cbtl.inh(params["B_d1_snc"]))
     place("SNc",      "D2",       cbtl.inh(params["B_d2_snc"]))
     # --- Neuromodulatory weights (dopamine + adenosine) onto D1/D2 PKA -----
@@ -91,24 +88,11 @@ def _build_weight_matrix(params):
         k_a2r = float(np.clip(np.array(params["k_a2r"]), 0.0, 1.0))
         place("D2", "Adenosine", np.full((n_d2, 1), k_a2r))
     place("GPe",      "D2",       cbtl.inh(params["B_d2_gpe"]))
-    place("GPe",      "STN",      cbtl.exc(params["B_stn_gpe"]))
     place("GPe",      "GPe",      cbtl.inh(params["J_gpe"]))
-    place("STN",      "GPe",      cbtl.inh(params["B_gpe_stn"]))
-    place("STN",      "Cortex",   cbtl.exc(params["B_c_stn"]))  # hyperdirect pathway
-    place("STN",      "STN",      cbtl.exc(params["J_stn"]))
     place("SNr",      "D1",       cbtl.inh(params["B_d1_snr"]))
-    place("SNr",      "STN",      cbtl.exc(params["B_stn_snr"]))
     place("SNr",      "GPe",      cbtl.inh(params["B_gpe_snr"]))
-    place("SC",       "Cortex",   cbtl.exc(params["B_c_sc"]))
-    place("SC",       "SNr",      cbtl.inh(params["B_snr_sc"]))
-    place("SC",       "SC",       params["J_sc"])
     place("Thalamus", "Cortex",   cbtl.exc(params["B_c_t"]))
     place("Thalamus", "SNr",      cbtl.inh(params["B_snr_t"]))
-    place("Thalamus", "SC",       cbtl.exc(params["B_sc_t"]))
-    # SC projects to E units only (first 2 rows of Medulla).
-    r0 = offsets["Medulla"][0]
-    c0, c1 = offsets["SC"]
-    W[r0:r0 + 2, c0:c1] = np.array(cbtl.exc(params["B_sc_med"]))
     place("Thalamus", "Thalamus", params["J_t"])
     def _med_block(raw):
         return np.concatenate([np.array(cbtl.exc(raw[:, :1])), np.array(cbtl.inh(raw[:, 1:]))], axis=1)
@@ -250,7 +234,6 @@ def _load_bundle():
         n_snc=params["P_snc"].shape[0],
         n_snr=params["P_snr"].shape[0],
         n_gpe=params["J_gpe"].shape[0],
-        n_stn=params["J_stn"].shape[0],
         n_t=params["J_t"].shape[0],
         n_med=params["J_med_w1"].shape[0] * 2,
         n_input=1,
