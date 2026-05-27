@@ -39,7 +39,7 @@ RL_CONFIG = {
     "silence_coef": 0.5,
     "tail_coef": 0.5,
     "asym_coef": 0.1,
-    "asym_margin": 0.9,
+    "asym_margin": 0.5,
     "rest_pka_coef": 0.1,
     "rest_pka_margin": 0.9,
 }
@@ -69,7 +69,7 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 30000,
+    "num_iters": 5000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
 }

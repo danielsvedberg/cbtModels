@@ -61,7 +61,7 @@ def main():
         inputs,
         masks,
         optimizer,
-        1000, #train_cfg["num_iters"], # number of iters
+        500, #train_cfg["num_iters"], # number of iters
         log_interval=train_cfg["log_interval"],
         seed=train_cfg["seed"],
         baseline_momentum=rl_cfg["baseline_momentum"],

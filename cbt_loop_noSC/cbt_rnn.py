@@ -202,7 +202,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     rng_key, init_key, step_key = jr.split(rng_key, 3)
 
     noise_std = jnp.asarray(config.get("noise_std", 0.0))
-    x_c0 = nln(x_c0 + noise_std * jr.normal(init_key, x_c0.shape))
+    x_c0 = jnp.minimum(nln(x_c0 + noise_std * jr.normal(init_key, x_c0.shape)), 0.5)
     x_d10 = nln(x_d10 + noise_std * jr.normal(init_key, x_d10.shape))
     x_d20 = nln(x_d20 + noise_std * jr.normal(init_key, x_d20.shape))
     x_snc0 = nln(x_snc0 + noise_std * jr.normal(init_key, x_snc0.shape))
@@ -303,7 +303,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
     snc_pacer = sigmoid(p_snc) * snc_pacer_max
     stn_pacer = stn_pacer_max * jnp.ones(j_stn.shape[0])
-    snr_pacer = snr_pacer_min * sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
+    snr_pacer = snr_pacer_min + sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
     gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
 
     tau_med = config.get("tau_med", 5.0)

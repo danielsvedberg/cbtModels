@@ -116,7 +116,7 @@ def init_params(
         "x_c0":   jnp.ones((n_c,))   * 0.1,
         "x_d10":  jnp.ones((n_d1,))  * 0.1,
         "x_d20":  jnp.ones((n_d2,))  * 0.1,
-        "x_snc0": jnp.ones((n_snc,)) * 0.01,
+        "x_snc0": jnp.ones((n_snc,)) * 0.1,
         "x_gpe0": jnp.ones((n_gpe,)) * 0.1,
         "x_snr0": jnp.ones((n_snr,)) * 0.1,
         "x_t0":   jnp.ones((n_t,))   * 0.3,
@@ -128,7 +128,7 @@ def init_params(
         "pka_d20": jnp.ones((n_d2,)) * 0.1,
         # Trainable tonic adenosine drive constants (independent — no ordering enforced).
         "k_a1r": jnp.array(0.1),  # A1R inhibitory drive on D1 PKA
-        "k_a2r": jnp.array(0.2),  # A2R excitatory drive on D2 PKA
+        "k_a2r": jnp.array(0.1),  # A2R excitatory drive on D2 PKA
     }
 
     config = {
@@ -191,7 +191,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     rng_key, init_key, step_key = jr.split(rng_key, 3)
 
     noise_std = jnp.asarray(config.get("noise_std", 0.0))
-    x_c0 = nln(x_c0 + noise_std * jr.normal(init_key, x_c0.shape))
+    x_c0 = jnp.minimum(nln(x_c0 + noise_std * jr.normal(init_key, x_c0.shape)), 0.5)
     x_d10 = nln(x_d10 + noise_std * jr.normal(init_key, x_d10.shape))
     x_d20 = nln(x_d20 + noise_std * jr.normal(init_key, x_d20.shape))
     x_snc0 = nln(x_snc0 + noise_std * jr.normal(init_key, x_snc0.shape))
@@ -281,7 +281,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     gpe_pacer_max = config.get("gpe_pacer_max", 0.8)
 
     snc_pacer = sigmoid(p_snc) * snc_pacer_max
-    snr_pacer = snr_pacer_min * sigmoid(p_snr) * (snr_pacer_max-snr_pacer_min)
+    snr_pacer = snr_pacer_min + sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
     gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
 
     tau_med = config.get("tau_med", 5.0)
@@ -340,12 +340,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
         pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1
         pka_d1 = pka_d1 + jnp.maximum(0, (1.0 / tau_pka_rise) * (m_d1 @ x_snc - k_a1r))
-        pka_d1 = 0.9*nln(pka_d1)+0.1
+        #pka_d1 = 0.9*nln(pka_d1)+0.1
+        pka_d1 = sigmoid(4*(pka_d1-0.6))
 
         #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
         pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2
-        pka_d2 = pka_d2 + jnp.maximum(0,(1.0 / tau_pka_rise) * (k_a2r - m_d2 @ x_snc))
-        pka_d2 = 0.9*nln(pka_d2)+0.1
+        pka_d2 = pka_d2 + jnp.maximum(0, (1.0 / tau_pka_rise) * (k_a2r - m_d2 @ x_snc))
+        #pka_d2 = 0.9*nln(pka_d2)+0.1
+        pka_d2 = sigmoid(4*(pka_d2-0.5))
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
