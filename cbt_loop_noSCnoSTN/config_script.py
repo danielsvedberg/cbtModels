@@ -12,17 +12,19 @@ SEED_CONFIG = {
 }
 
 RNN_CONFIG = {
-    "n_c": 10,
-    "n_d1": 6,
-    "n_d2": 6,
+    "n_c_exc": 9,
+    "n_c_inh": 3,
+    "n_d1": 8,
+    "n_d2": 8,
     "n_snc": 4,
     "n_snr": 6,
     "n_gpe": 6,
-    "n_t": 10,
+    "n_t_exc": 9,
+    "n_t_inh": 3,
     "n_med": 4,
     "n_input":1,
     "n_output":1,
-    "g_bg": 1.2,
+    "g_bg": 1.0,
     "g_nm": 0.5,
     "noise_std": 0.01,
 }
@@ -40,8 +42,12 @@ RL_CONFIG = {
     "tail_coef": 0.5,
     "asym_coef": 0.1,
     "asym_margin": 0.5,
-    "rest_pka_coef": 0.1,
+    "rest_pka_coef": 0.0,
     "rest_pka_margin": 0.9,
+    "pathway_floor_coef": 0.1,
+    "pathway_floor_min": 1.5,
+    "c_snc_floor_coef": 0.1,
+    "c_snc_floor_min": 0.1,
 }
 
 TASK_CONFIG = {
@@ -69,9 +75,13 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 5000,
+    "num_iters": 10000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
+    # Training objective for train_pavlovian: "reinforce" (policy gradient) or
+    # "supervised" (dense BCE/MSE regression onto the target trajectory).
+    "mode": "reinforce",
+    "loss_type": "bce",  # supervised mode only: "bce" or "mse"
 }
 
 TEST_CONFIG = {

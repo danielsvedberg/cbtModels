@@ -67,19 +67,22 @@ def _build_mixed_batch():
 
 
 def _make_dual_cue_weights(params, rng_key):
-    """Build a two-column cue→cortex projection (B_cue_c).
+    """Build a two-column cue→cortex projection for both cortical pools.
 
     Column 0 (timing/STMT cue) is freshly randomized — it is a new cue whose
     meaning differs from the Pavlovian task. Column 1 (Pavlovian cue) carries
     over the weights learned during Pavlovian training. Both columns are
-    trainable parameters and are updated during this run.
+    trainable parameters and are updated during this run. Cortex follows Dale's
+    law, so the cue projects to the excitatory and inhibitory pools through two
+    separate weight tensors (B_cue_c_exc / B_cue_c_inh).
     """
     p = dict(params)
-    # Pavlovian cue column (handles a 1- or 2-column loaded B_cue_c).
-    pav_col = jnp.asarray(params["B_cue_c"])[:, -1:]  # (n_c, 1)
-    n_c = pav_col.shape[0]
-    timing_col = jr.normal(rng_key, (n_c, 1))         # fresh timing-cue vector
-    p["B_cue_c"] = jnp.concatenate([timing_col, pav_col], axis=1)  # (n_c, 2)
+    k_exc, k_inh = jr.split(rng_key)
+    for key, sub in (("B_cue_c_exc", k_exc), ("B_cue_c_inh", k_inh)):
+        pav_col = jnp.asarray(params[key])[:, -1:]  # (n, 1) carried-over Pavlovian cue
+        n = pav_col.shape[0]
+        timing_col = jr.normal(sub, (n, 1))         # fresh timing-cue vector
+        p[key] = jnp.concatenate([timing_col, pav_col], axis=1)  # (n, 2)
     return p
 
 
@@ -104,14 +107,16 @@ def main():
         params = bundle
         _, config = cbtl.init_params(
             jr.PRNGKey(0),
-            n_c=params["J_c"].shape[0],
+            n_c_exc=params["J_c_ee"].shape[0],
+            n_c_inh=params["J_c_ii"].shape[0],
             n_d1=params["J_d1"].shape[0],
             n_d2=params["J_d2"].shape[0],
             n_snc=params["P_snc"].shape[0],
             n_snr=params["P_snr"].shape[0],
             n_gpe=params["J_gpe"].shape[0],
             n_stn=params["J_stn"].shape[0],
-            n_t=params["J_t"].shape[0],
+            n_t_exc=params["J_t_ee"].shape[0],
+            n_t_inh=params["J_t_ii"].shape[0],
             n_med=params["J_med_w1"].shape[0] * 2,
             n_input=1,
             n_output=1,
@@ -131,28 +136,58 @@ def main():
         optax.adamw(learning_rate=cfg.OPTIM_CONFIG["learning_rate"]),
     )
 
-    best_params, losses, rewards = stmt.fit_rnn_reinforce(
-        cbtl.rnn_func,
-        params,
-        config,
-        inputs,
-        masks,
-        optimizer,
-        train_cfg["num_iters"],
-        log_interval=train_cfg["log_interval"],
-        seed=train_cfg["seed"],
-        baseline_momentum=rl_cfg["baseline_momentum"],
-        entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
-        batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
-        asym_coef=rl_cfg.get("asym_coef", 0.0),
-        asym_margin=rl_cfg.get("asym_margin", 1.0),
-        rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-        rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
-    )
+    mode = train_cfg.get("mode", "reinforce")
+    if mode == "supervised":
+        # Dense supervised regression onto the target trajectory; structural
+        # priors carried over from RL_CONFIG.
+        best_params, losses, rewards = stmt.fit_rnn_supervised(
+            cbtl.rnn_func,
+            params,
+            config,
+            inputs,
+            masks,
+            optimizer,
+            train_cfg["num_iters"],
+            batch_targets=targets,
+            log_interval=train_cfg["log_interval"],
+            seed=train_cfg["seed"],
+            loss_type=train_cfg.get("loss_type", "bce"),
+            asym_coef=rl_cfg.get("asym_coef", 0.0),
+            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
+            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
+            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
+            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+        )
+    else:
+        best_params, losses, rewards = stmt.fit_rnn_reinforce(
+            cbtl.rnn_func,
+            params,
+            config,
+            inputs,
+            masks,
+            optimizer,
+            train_cfg["num_iters"],
+            log_interval=train_cfg["log_interval"],
+            seed=train_cfg["seed"],
+            baseline_momentum=rl_cfg["baseline_momentum"],
+            entropy_coef=rl_cfg["entropy_coef"],
+            objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+            batch_targets=targets,
+            brevity_coef=rl_cfg.get("brevity_coef", 0.0),
+            silence_coef=rl_cfg.get("silence_coef", 0.0),
+            tail_coef=rl_cfg.get("tail_coef", 0.0),
+            asym_coef=rl_cfg.get("asym_coef", 0.0),
+            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
+            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
+            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
+            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+        )
 
     out_path = cfg.shaped_params_path()
     with out_path.open("wb") as f:
@@ -162,7 +197,8 @@ def main():
     if losses:
         print(f"Final logged loss: {float(losses[-1]):.6f}")
     if rewards:
-        print(f"Final mean reward: {float(rewards[-1]):.4f}")
+        label = "Final mean accuracy" if mode == "supervised" else "Final mean reward"
+        print(f"{label}: {float(rewards[-1]):.4f}")
 
 
 if __name__ == "__main__":

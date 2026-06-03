@@ -5,18 +5,19 @@ import jax.random as jr
 from jax import vmap, jit
 from jax import lax
 import optax
+from jax.nn import tanh
 
 
 def exc(w):
-    #return jax.nn.softplus(w)
-    return jnp.maximum(0, w)
+    return jax.nn.softplus(w)
+    #return jnp.maximum(0, w)
     #return jnp.abs(w)
 
 
 def inh(w):
-    #return -exc(w)
+    return -exc(w)
     #return -jnp.abs(w)
-    return -jnp.maximum(0, w)
+    #return -jnp.maximum(0, w)
 
 
 def nln(x):
@@ -446,6 +447,10 @@ def reinforce_loss(
     asym_margin=1.0,
     rest_pka_coef=0.0,
     rest_pka_margin=1.0,
+    pathway_floor_coef=0.0,
+    pathway_floor_min=1.0,
+    c_snc_floor_coef=0.0,
+    c_snc_floor_min=0.0,
 ):
     """
     Direct objective options for STMT optimization.
@@ -467,6 +472,14 @@ def reinforce_loss(
     dSPN→SNc should be stronger than iSPN→SNc. Penalizes
     ``max(0, ||inh(B_d2_snc)|| - asym_margin * ||inh(B_d1_snc)||)^2`` only
     when both keys exist in ``params``.
+
+    ``pathway_floor_coef`` keeps the direct (D1→SNr) and indirect (D2→GPe)
+    pathway projections from degenerating during training. Penalizes
+    ``max(0, pathway_floor_min - ||inh(B_d1_snr)||)^2`` and the same for
+    ``B_d2_gpe``, summed. Active only when each key is present.
+
+    ``c_snc_floor_coef`` keeps the cortex→SNc excitatory projection from
+    collapsing. Penalizes ``max(0, c_snc_floor_min - ||exc(B_c_snc)||)^2``.
 
     ``rest_pka_coef`` enforces D1 < D2 PKA asymmetry on the *runtime*
     pre-cue PKA trajectories (averaged over t < cue_onset and over neurons),
@@ -604,9 +617,32 @@ def reinforce_loss(
     else:
         rest_pka_loss = jnp.array(0.0, dtype=probs.dtype)
 
+    # Pathway floor: prevent D1→SNr and D2→GPe from being degraded by training.
+    pathway_floor_loss = jnp.array(0.0, dtype=probs.dtype)
+    if "B_d1_snr" in params:
+        d1_snr_norm = jnp.linalg.norm(inh(params["B_d1_snr"]))
+        pathway_floor_loss = pathway_floor_loss + jnp.square(
+            jnp.maximum(0.0, pathway_floor_min - d1_snr_norm)
+        )
+    if "B_d2_gpe" in params:
+        d2_gpe_norm = jnp.linalg.norm(inh(params["B_d2_gpe"]))
+        pathway_floor_loss = pathway_floor_loss + jnp.square(
+            jnp.maximum(0.0, pathway_floor_min - d2_gpe_norm)
+        )
+    pathway_floor_loss = pathway_floor_coef * pathway_floor_loss
+
+    # Cortex→SNc floor: prevent excitatory drive onto SNc from collapsing.
+    if "B_c_snc" in params:
+        c_snc_norm = jnp.linalg.norm(exc(params["B_c_snc"]))
+        c_snc_floor_loss = c_snc_floor_coef * jnp.square(
+            jnp.maximum(0.0, c_snc_floor_min - c_snc_norm)
+        )
+    else:
+        c_snc_floor_loss = jnp.array(0.0, dtype=probs.dtype)
+
     total_loss = (
         pg_loss - entropy_coef * entropy + brevity_term + silence_loss + tail_loss
-        + asym_loss + rest_pka_loss
+        + asym_loss + rest_pka_loss + pathway_floor_loss + c_snc_floor_loss
     )
     aux = {
         "success_rate": mean_p_reward,
@@ -620,6 +656,8 @@ def reinforce_loss(
         "tail_loss": tail_loss,
         "asym_loss": asym_loss,
         "rest_pka_loss": rest_pka_loss,
+        "pathway_floor_loss": pathway_floor_loss,
+        "c_snc_floor_loss": c_snc_floor_loss,
     }
     return total_loss, aux
 
@@ -645,6 +683,10 @@ def fit_rnn_reinforce(
     asym_margin=1.0,
     rest_pka_coef=0.0,
     rest_pka_margin=1.0,
+    pathway_floor_coef=0.0,
+    pathway_floor_min=1.0,
+    c_snc_floor_coef=0.0,
+    c_snc_floor_min=0.0,
 ):
     """
     Train an RNN policy with REINFORCE on the binary STMT objective.
@@ -684,6 +726,10 @@ def fit_rnn_reinforce(
                 asym_margin,
                 rest_pka_coef,
                 rest_pka_margin,
+                pathway_floor_coef,
+                pathway_floor_min,
+                c_snc_floor_coef,
+                c_snc_floor_min,
             ),
             has_aux=True,
         )(cur_params)
@@ -705,6 +751,8 @@ def fit_rnn_reinforce(
             aux["tail_loss"],
             aux["asym_loss"],
             aux["rest_pka_loss"],
+            aux["pathway_floor_loss"],
+            aux["c_snc_floor_loss"],
         )
 
     losses = []
@@ -725,6 +773,8 @@ def fit_rnn_reinforce(
             tail_vals,
             asym_vals,
             rest_pka_vals,
+            pathway_floor_vals,
+            c_snc_floor_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key, baseline),
@@ -743,6 +793,8 @@ def fit_rnn_reinforce(
         last_tail = float(tail_vals[-1])
         last_asym = float(asym_vals[-1])
         last_rest_pka = float(rest_pka_vals[-1])
+        last_pathway_floor = float(pathway_floor_vals[-1])
+        last_c_snc_floor = float(c_snc_floor_vals[-1])
 
         losses.append(last_loss)
         reward_means.append(last_reward)
@@ -753,7 +805,8 @@ def fit_rnn_reinforce(
             f"log_reward: {last_log_reward:.4f}, success: {last_success:.4f}, entropy: {last_entropy:.4f}, "
             f"brevity: {last_brevity:.4f}, norm_resp_time: {last_norm_time:.3f}, "
             f"silence: {last_silence:.4f}, tail: {last_tail:.4f}, asym: {last_asym:.4f}, "
-            f"rest_pka: {last_rest_pka:.4f}"
+            f"rest_pka: {last_rest_pka:.4f}, pathway_floor: {last_pathway_floor:.4f}, "
+            f"c_snc_floor: {last_c_snc_floor:.4f}"
         )
 
         if last_loss < best_loss:
@@ -761,6 +814,261 @@ def fit_rnn_reinforce(
             best_params = params
 
     return best_params, losses, reward_means
+
+
+def supervised_loss(
+    rnn_func,
+    params,
+    config,
+    batch_inputs,
+    batch_targets,
+    batch_mask,
+    rng_keys,
+    loss_type="bce",
+    asym_coef=0.0,
+    asym_margin=1.0,
+    rest_pka_coef=0.0,
+    rest_pka_margin=1.0,
+    pathway_floor_coef=0.0,
+    pathway_floor_min=1.0,
+    c_snc_floor_coef=0.0,
+    c_snc_floor_min=0.0,
+):
+    """Dense supervised loss: match the network output to the target trajectory.
+
+    Unlike ``reinforce_loss`` (which optimizes a sampled-policy reward via a
+    hazard model), this directly regresses the deterministic output ``ys``
+    onto the task's target waveform at every masked timestep. The gradient is
+    therefore dense and informative even when the policy earns no reward, which
+    sidesteps the REINFORCE cold-start problem.
+
+    Args:
+        loss_type: ``"bce"`` for masked binary cross-entropy (output treated as
+            a per-timestep probability) or ``"mse"`` for mean squared error.
+
+    The optional ``asym_*``/``rest_pka_*``/``pathway_floor_*``/``c_snc_floor_*``
+    terms are the same biological structural penalties used by
+    ``reinforce_loss`` (all default to off), so the same priors can be carried
+    into supervised training. ``rng_keys`` are forwarded to ``rnn_func`` so
+    state noise still regularizes training.
+
+    Returns ``(total_loss, aux)`` where ``aux`` exposes the supervised loss and
+    output-matching diagnostics.
+    """
+    ys, pkad1_traj, pkad2_traj = rnn_func(params, config, batch_inputs, None, rng_keys)
+    eps = 1e-7
+    probs = jnp.clip(ys[..., 0], eps, 1.0 - eps)  # (batch, T)
+    batch_size, T = probs.shape
+
+    if batch_mask is None:
+        mask_2d = jnp.ones((batch_size, T), dtype=probs.dtype)
+    else:
+        mask_2d = batch_mask[..., 0] if batch_mask.ndim == 3 else batch_mask
+
+    if batch_targets is None:
+        raise ValueError("supervised_loss requires batch_targets (the target trajectory).")
+    target_2d = batch_targets[..., 0] if batch_targets.ndim == 3 else batch_targets
+    target_2d = target_2d.astype(probs.dtype)
+
+    mask_sum = jnp.sum(mask_2d) + 1e-8
+    if loss_type == "bce":
+        per_t = -(
+            target_2d * jnp.log(probs)
+            + (1.0 - target_2d) * jnp.log(1.0 - probs)
+        )
+    elif loss_type == "mse":
+        per_t = jnp.square(probs - target_2d)
+    else:
+        raise ValueError(f"Unsupported loss_type='{loss_type}'. Use 'bce' or 'mse'.")
+    sup_loss = jnp.sum(per_t * mask_2d) / mask_sum
+
+    # Output-matching diagnostics (no effect on the gradient).
+    valid = mask_2d > 0.0
+    accuracy = jnp.sum(((probs > 0.5) == (target_2d > 0.5)) * mask_2d) / mask_sum
+    in_window = valid & (target_2d > 0.5)
+    off_window = valid & (target_2d <= 0.5)
+    in_rate = jnp.sum(probs * in_window) / (jnp.sum(in_window) + 1e-8)
+    off_rate = jnp.sum(probs * off_window) / (jnp.sum(off_window) + 1e-8)
+
+    # dSPN->SNc should be stronger than iSPN->SNc (biological asymmetry).
+    if "B_d1_snc" in params and "B_d2_snc" in params:
+        d1_norm = jnp.linalg.norm(inh(params["B_d1_snc"]))
+        d2_norm = jnp.linalg.norm(inh(params["B_d2_snc"]))
+        asym_loss = asym_coef * jnp.square(jnp.maximum(0.0, d2_norm - asym_margin * d1_norm))
+    else:
+        asym_loss = jnp.array(0.0, dtype=probs.dtype)
+
+    # Runtime resting-PKA asymmetry: D1 < margin * D2 averaged over the pre-cue window.
+    if rest_pka_coef != 0.0 and pkad1_traj is not None and pkad2_traj is not None:
+        cue_indicator = batch_inputs[..., 0] > 0.5
+        cue_onsets = jnp.argmax(cue_indicator, axis=1)
+        t_idx = jnp.arange(T)[None, :]
+        pre_cue_mask = (t_idx < cue_onsets[:, None]).astype(probs.dtype)
+        pre_cue_count = jnp.sum(pre_cue_mask, axis=1) + 1e-8
+        pre_d1 = jnp.sum(jnp.mean(pkad1_traj, axis=-1) * pre_cue_mask, axis=1) / pre_cue_count
+        pre_d2 = jnp.sum(jnp.mean(pkad2_traj, axis=-1) * pre_cue_mask, axis=1) / pre_cue_count
+        rest_pka_loss = rest_pka_coef * jnp.square(
+            jnp.maximum(0.0, jnp.mean(pre_d1) - rest_pka_margin * jnp.mean(pre_d2))
+        )
+    else:
+        rest_pka_loss = jnp.array(0.0, dtype=probs.dtype)
+
+    # Pathway floors: keep D1->SNr and D2->GPe from degrading.
+    pathway_floor_loss = jnp.array(0.0, dtype=probs.dtype)
+    if "B_d1_snr" in params:
+        pathway_floor_loss = pathway_floor_loss + jnp.square(
+            jnp.maximum(0.0, pathway_floor_min - jnp.linalg.norm(inh(params["B_d1_snr"])))
+        )
+    if "B_d2_gpe" in params:
+        pathway_floor_loss = pathway_floor_loss + jnp.square(
+            jnp.maximum(0.0, pathway_floor_min - jnp.linalg.norm(inh(params["B_d2_gpe"])))
+        )
+    pathway_floor_loss = pathway_floor_coef * pathway_floor_loss
+
+    # Cortex->SNc floor.
+    if "B_c_snc" in params:
+        c_snc_floor_loss = c_snc_floor_coef * jnp.square(
+            jnp.maximum(0.0, c_snc_floor_min - jnp.linalg.norm(exc(params["B_c_snc"])))
+        )
+    else:
+        c_snc_floor_loss = jnp.array(0.0, dtype=probs.dtype)
+
+    total_loss = sup_loss + asym_loss + rest_pka_loss + pathway_floor_loss + c_snc_floor_loss
+    aux = {
+        "sup_loss": sup_loss,
+        "accuracy": accuracy,
+        "in_window_rate": in_rate,
+        "off_window_rate": off_rate,
+        "asym_loss": asym_loss,
+        "rest_pka_loss": rest_pka_loss,
+        "pathway_floor_loss": pathway_floor_loss,
+        "c_snc_floor_loss": c_snc_floor_loss,
+    }
+    return total_loss, aux
+
+
+def fit_rnn_supervised(
+    rnn_func,
+    params,
+    config,
+    inputs,
+    loss_masks,
+    optimizer,
+    num_iters,
+    batch_targets,
+    log_interval=200,
+    seed=0,
+    loss_type="bce",
+    asym_coef=0.0,
+    asym_margin=1.0,
+    rest_pka_coef=0.0,
+    rest_pka_margin=1.0,
+    pathway_floor_coef=0.0,
+    pathway_floor_min=1.0,
+    c_snc_floor_coef=0.0,
+    c_snc_floor_min=0.0,
+):
+    """Train an RNN by direct supervision against the task target trajectory.
+
+    Mirrors ``fit_rnn_reinforce`` (same optimizer/scan/logging structure) but
+    optimizes ``supervised_loss`` instead of the policy-gradient objective.
+    ``batch_targets`` is required.
+
+    Returns:
+    - best_params: parameters with the lowest tracked supervised loss
+    - losses: list of scalar losses logged every log_interval
+    - accuracies: list of masked output-matching accuracies logged likewise
+    """
+    opt_state = optimizer.init(params)
+    n_data = inputs.shape[0]
+    rng_key = jr.PRNGKey(seed)
+
+    @jit
+    def _step(carry, _):
+        cur_params, cur_opt_state, cur_rng_key = carry
+
+        cur_rng_key, subkey = jr.split(cur_rng_key)
+        batch_rng_keys = jr.split(subkey, n_data)
+
+        (loss_value, aux), grads = jax.value_and_grad(
+            lambda prms: supervised_loss(
+                rnn_func,
+                prms,
+                config,
+                inputs,
+                batch_targets,
+                loss_masks,
+                batch_rng_keys,
+                loss_type,
+                asym_coef,
+                asym_margin,
+                rest_pka_coef,
+                rest_pka_margin,
+                pathway_floor_coef,
+                pathway_floor_min,
+                c_snc_floor_coef,
+                c_snc_floor_min,
+            ),
+            has_aux=True,
+        )(cur_params)
+
+        updates, cur_opt_state = optimizer.update(grads, cur_opt_state, cur_params)
+        cur_params = optax.apply_updates(cur_params, updates)
+
+        return (cur_params, cur_opt_state, cur_rng_key), (
+            loss_value,
+            aux["sup_loss"],
+            aux["accuracy"],
+            aux["in_window_rate"],
+            aux["off_window_rate"],
+            aux["asym_loss"],
+            aux["rest_pka_loss"],
+            aux["pathway_floor_loss"],
+            aux["c_snc_floor_loss"],
+        )
+
+    losses = []
+    accuracies = []
+    best_loss = float("inf")
+    best_params = params
+
+    for n in range(num_iters // log_interval):
+        (params, opt_state, rng_key), (
+            loss_vals,
+            sup_vals,
+            acc_vals,
+            in_rate_vals,
+            off_rate_vals,
+            asym_vals,
+            rest_pka_vals,
+            pathway_floor_vals,
+            c_snc_floor_vals,
+        ) = lax.scan(
+            _step,
+            (params, opt_state, rng_key),
+            None,
+            length=log_interval,
+        )
+
+        last_loss = float(loss_vals[-1])
+        last_acc = float(acc_vals[-1])
+        losses.append(last_loss)
+        accuracies.append(last_acc)
+
+        print(
+            f"step {(n + 1) * log_interval}, "
+            f"loss: {last_loss:.6f}, sup_loss: {float(sup_vals[-1]):.6f}, "
+            f"acc: {last_acc:.4f}, in_window: {float(in_rate_vals[-1]):.4f}, "
+            f"off_window: {float(off_rate_vals[-1]):.4f}, asym: {float(asym_vals[-1]):.4f}, "
+            f"rest_pka: {float(rest_pka_vals[-1]):.4f}, pathway_floor: {float(pathway_floor_vals[-1]):.4f}, "
+            f"c_snc_floor: {float(c_snc_floor_vals[-1]):.4f}"
+        )
+
+        if last_loss < best_loss:
+            best_loss = last_loss
+            best_params = params
+
+    return best_params, losses, accuracies
 
 
 def evaluate(rnn, params, config, all_inputs, noise_std=None, n_seeds=8):

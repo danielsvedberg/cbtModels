@@ -25,13 +25,15 @@ def load_bundle():
     params = bundle
     _, config = cbtl.init_params(
         jr.PRNGKey(0),
-        n_c=params["J_c"].shape[0],
+        n_c_exc=params["J_c_ee"].shape[0],
+        n_c_inh=params["J_c_ii"].shape[0],
         n_d1=params["J_d1"].shape[0],
         n_d2=params["J_d2"].shape[0],
         n_snc=params["P_snc"].shape[0],
         n_snr=params["P_snr"].shape[0],
         n_gpe=params["J_gpe"].shape[0],
-        n_t=params["J_t"].shape[0],
+        n_t_exc=params["J_t_ee"].shape[0],
+        n_t_inh=params["J_t_ii"].shape[0],
         n_med=params["J_med_w1"].shape[0] * 2,
         n_input=1,
         n_output=1,

@@ -17,6 +17,7 @@ from scipy import stats
 import cbt_rnn as cl
 import config_script as cs
 import jax.numpy as jnp
+import jax.random as jr
 import self_timed_movement_task as stmt
 
 dt = cs.default_config['dt']
@@ -601,7 +602,10 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
     fig = plt.figure(figsize=(1.8, 1.8))
     plotted_any = False
     for stim_idx, label in enumerate(label_list):
-        rts = cl.get_response_times_opto(opto_ys[stim_idx], cue_start=cs.opto_tstart, exclude_nan=True)
+        rts = cl.get_response_times_opto(
+            opto_ys[stim_idx], cue_start=cs.opto_tstart, exclude_nan=True,
+            rng_key=jr.PRNGKey(stim_idx),
+        )
         sorted_rts = jnp.sort(rts)
         if len(sorted_rts) == 0:
             continue
@@ -728,7 +732,10 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
         stim_mags = [cs.stim_strengths[i] for i in opfilter]
         ax = axs[opidx]
         for magidx, opmag in enumerate(stim_mags):
-            rts = cl.get_response_times_opto(ys_sub[magidx], cue_start=cs.opto_tstart, exclude_nan=True)
+            rts = cl.get_response_times_opto(
+                ys_sub[magidx], cue_start=cs.opto_tstart, exclude_nan=True,
+                rng_key=jr.PRNGKey(opidx * 100 + magidx),
+            )
             sorted_rts = jnp.sort(rts)
             if len(sorted_rts) == 0:
                 continue

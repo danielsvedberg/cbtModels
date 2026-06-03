@@ -17,6 +17,7 @@ from scipy import stats
 import cbt_rnn as cl
 import config_script as cs
 import jax.numpy as jnp
+import jax.random as jr
 import self_timed_movement_task as stmt
 
 dt = cs.default_config['dt']
@@ -27,11 +28,42 @@ _AREA_LABELS = {
     'D2': 'iSPN',
     'pkaD1': 'dSPN exc.',
     'pkaD2': 'iSPN exc.',
+    'Cortex (exc)': 'Cortex exc.',
+    'Cortex (inh)': 'Cortex inh.',
+    'Thalamus (exc)': 'Thalamus exc.',
+    'Thalamus (inh)': 'Thalamus inh.',
 }
 
 
 def _area_label(name):
     return _AREA_LABELS.get(name, name)
+
+
+def _get_area_activity(name, xs):
+    """Like cl.get_brain_area, but recognizes ``Cortex (exc)/(inh)`` and
+    ``Thalamus (exc)/(inh)`` and slices the last axis accordingly.
+
+    Cortex and thalamus state arrays come back from the model as
+    ``[exc..., inh...]`` along the neuron axis, so the inhibitory pool sits in
+    the tail ``n_*_inh`` entries.
+    """
+    if name.startswith('Cortex'):
+        full = cl.get_brain_area('Cortex', xs)
+        n_exc = cs.RNN_CONFIG['n_c_exc']
+        if name.endswith('(exc)'):
+            return full[..., :n_exc]
+        if name.endswith('(inh)'):
+            return full[..., n_exc:]
+        return full
+    if name.startswith('Thalamus'):
+        full = cl.get_brain_area('Thalamus', xs)
+        n_exc = cs.RNN_CONFIG['n_t_exc']
+        if name.endswith('(exc)'):
+            return full[..., :n_exc]
+        if name.endswith('(inh)'):
+            return full[..., n_exc:]
+        return full
+    return cl.get_brain_area(name, xs)
 
 def plot_loss(losses_nm):
     #if losses_nm are not in the right shape, then make it the right shape
@@ -80,10 +112,11 @@ def plot_output(all_ys):
 
 
 def plot_activity_by_area(all_xs, all_zs=None):
-    areas = ['Cortex', 'D1', 'D2', 'pkaD1', 'pkaD2', 'SNc', 'GPe', 'SNr', 'Thalamus', 'Medulla']
+    areas = ['Cortex (exc)', 'Cortex (inh)', 'D1', 'D2', 'pkaD1', 'pkaD2',
+             'SNc', 'GPe', 'SNr', 'Thalamus (exc)', 'Thalamus (inh)', 'Medulla']
     fig, axs = plt.subplots(len(areas), 2, figsize=(6, 1.5 * len(areas)), sharex=True)
     for idx, name in enumerate(areas):
-        area_activity = cl.get_brain_area(name, all_xs)
+        area_activity = _get_area_activity(name, all_xs)
         nrn_avg = jnp.mean(area_activity, axis=3)
         # Avg across neurons
         mean_act, sem_act = stmt.compute_mean_sem(nrn_avg)
@@ -131,14 +164,14 @@ def plot_cue_algn_activity(all_xs, noiseless=False, ys=None):
     x_axis = (jnp.arange(new_T + 100) - 100) / 100
 
     # Brain areas plus D1/D2 PKA excitability traces (pkaD1, pkaD2).
-    area_list = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'SNr', 'Thalamus',
-                 'Medulla', 'pkaD1', 'pkaD2']
+    area_list = ['Cortex (exc)', 'Cortex (inh)', 'D1', 'D2', 'SNc', 'GPe', 'SNr',
+                 'Thalamus (exc)', 'Thalamus (inh)', 'Medulla', 'pkaD1', 'pkaD2']
     n_area_rows = len(area_list)
     n_rows = n_area_rows + 1 if ys is not None else n_area_rows
     fig_h = 1.5 * n_rows
     fig, axs = plt.subplots(n_rows, 4, figsize=(12, fig_h), sharex=True, sharey=False)
     for idx, name in enumerate(area_list):
-        area_activity = cl.get_brain_area(name, all_xs)
+        area_activity = _get_area_activity(name, all_xs)
         area_activity = jnp.stack(
             [stmt.align_to_cue(area_activity_seed, cs.test_start_t, new_T=new_T) for area_activity_seed in area_activity]
         )
@@ -480,8 +513,8 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
 
     # Plot activity in each brain area for different response time bins (mean ± SEM).
     # pkaD1 / pkaD2 are included as their own dSPN/iSPN excitability rows.
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'SNr', 'Thalamus',
-                   'Medulla', 'pkaD1', 'pkaD2']
+    brain_areas = ['Cortex (exc)', 'Cortex (inh)', 'D1', 'D2', 'SNc', 'GPe', 'SNr',
+                   'Thalamus (exc)', 'Thalamus (inh)', 'Medulla', 'pkaD1', 'pkaD2']
     cmap = plt.cm.get_cmap('turbo')
     norm = matplotlib.colors.Normalize(vmin=0, vmax=len(bin_labels) - 1)
     n_brain_areas = len(brain_areas)
@@ -496,7 +529,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
                 continue
 
             # Get the brain area activity (already cue-aligned)
-            area_activity = cl.get_brain_area(name, xs_bin)  # trials * T * N
+            area_activity = _get_area_activity(name, xs_bin)  # trials * T * N
 
             # Compute mean and SEM for the current bin
             mean_area_activity = jnp.mean(area_activity, axis=-1)  # trials * T
@@ -594,14 +627,17 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
 
     opto_ys / opto_xs are 3-element lists [control, perturb dSPN, perturb iSPN].
     """
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'SNr', 'Thalamus',
-                   'Medulla', 'pkaD1', 'pkaD2']
+    brain_areas = ['Cortex (exc)', 'Cortex (inh)', 'D1', 'D2', 'SNc', 'GPe', 'SNr',
+                   'Thalamus (exc)', 'Thalamus (inh)', 'Medulla', 'pkaD1', 'pkaD2']
 
     # CDF of response times.
     fig = plt.figure(figsize=(1.8, 1.8))
     plotted_any = False
     for stim_idx, label in enumerate(label_list):
-        rts = cl.get_response_times_opto(opto_ys[stim_idx], cue_start=cs.opto_tstart, exclude_nan=True)
+        rts = cl.get_response_times_opto(
+            opto_ys[stim_idx], cue_start=cs.opto_tstart, exclude_nan=True,
+            rng_key=jr.PRNGKey(stim_idx),
+        )
         sorted_rts = jnp.sort(rts)
         if len(sorted_rts) == 0:
             continue
@@ -631,7 +667,7 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
         ax = axs[idx]
         t_m = None
         for stim_idx, label in enumerate(label_list):
-            area_activity = cl.get_brain_area(name, opto_xs[stim_idx]).mean(axis=-1)  # (n_seeds, T)
+            area_activity = _get_area_activity(name, opto_xs[stim_idx]).mean(axis=-1)  # (n_seeds, T)
             mean_activity, sem_activity = stmt.compute_mean_sem(area_activity)
             nbin = len(mean_activity)
             t = jnp.linspace(-cs.opto_tstart / 100, (newT - cs.opto_tstart) / 100, nbin)
@@ -705,8 +741,8 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
     n_stims = len(cols)
 
     stim_labels = ['inh. dSPN', 'inh. iSPN', 'stim. dSPN', 'stim. iSPN']
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'SNr', 'Thalamus',
-                   'Medulla', 'pkaD1', 'pkaD2']
+    brain_areas = ['Cortex (exc)', 'Cortex (inh)', 'D1', 'D2', 'SNc', 'GPe', 'SNr',
+                   'Thalamus (exc)', 'Thalamus (inh)', 'Medulla', 'pkaD1', 'pkaD2']
 
     cue_start_t = 0
     cue_end_t = (cue_start_t + cs.config['T_cue']) / 100
@@ -728,7 +764,10 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
         stim_mags = [cs.stim_strengths[i] for i in opfilter]
         ax = axs[opidx]
         for magidx, opmag in enumerate(stim_mags):
-            rts = cl.get_response_times_opto(ys_sub[magidx], cue_start=cs.opto_tstart, exclude_nan=True)
+            rts = cl.get_response_times_opto(
+                ys_sub[magidx], cue_start=cs.opto_tstart, exclude_nan=True,
+                rng_key=jr.PRNGKey(opidx * 100 + magidx),
+            )
             sorted_rts = jnp.sort(rts)
             if len(sorted_rts) == 0:
                 continue
@@ -758,7 +797,7 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
             ax = axs[idx, opidx]
             t_m = None
             for magidx, opmag in enumerate(stim_mags):
-                area_activity = cl.get_brain_area(name, xs_sub[magidx]).mean(axis=-1)
+                area_activity = _get_area_activity(name, xs_sub[magidx]).mean(axis=-1)
                 mean_activity, sem_activity = stmt.compute_mean_sem(area_activity)
                 nbin = len(mean_activity)
                 t = jnp.linspace(-cs.opto_tstart / 100, (newT - cs.opto_tstart) / 100, nbin)
@@ -836,6 +875,15 @@ def plot_d1d2ratio_SNc_correlogram(d1d2_ratio, all_xs, response_times):
 
     fig, ax = plt.subplots(1, 1, figsize=(1.8, 1.6))
     ax.scatter(snc, d1d2_ratio, c='blue', alpha=0.1)
+    # SNc can saturate to a constant in lightly-trained models; linregress
+    # rejects degenerate (zero-variance) input. Skip the fit line in that case
+    # and just save the scatter — the figure stays informative either way.
+    if snc.size < 2 or np.allclose(snc, snc[0]):
+        ax.set_xlabel('SNc activity (AU)')
+        ax.set_ylabel('dSPN - iSPN')
+        plt.tight_layout()
+        save_fig(fig, 'd1d2_ratio_vs_SNc')
+        return
     # calculate and plot a linear regression line for the regression
     slope, intercept, r_value, p_value, std_err = stats.linregress(snc, d1d2_ratio)
     # create a p value string: if p_value is 0, print p<0.001, else print p={p_value}
@@ -1078,8 +1126,8 @@ def plot_binned_pnr(all_ys, all_xs, all_zs=None, conditions=None, xlabel='', tit
     save_fig(fig_y, f'{filename}_outputs')
     
     # 2. Plot Brain Area Activities (incl. Medulla and D1/D2 PKA excitability rows)
-    brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'SNr', 'Thalamus',
-                   'Medulla', 'pkaD1', 'pkaD2']
+    brain_areas = ['Cortex (exc)', 'Cortex (inh)', 'D1', 'D2', 'SNc', 'GPe', 'SNr',
+                   'Thalamus (exc)', 'Thalamus (inh)', 'Medulla', 'pkaD1', 'pkaD2']
     fig_a, axs_a = plt.subplots(len(brain_areas), 1,
                                 figsize=(1.8, 0.75 * len(brain_areas)), sharex=True)
 
@@ -1090,7 +1138,7 @@ def plot_binned_pnr(all_ys, all_xs, all_zs=None, conditions=None, xlabel='', tit
             xs_c = [x[:, c_idx] for x in all_xs]
 
             # get_brain_area returns (seeds, T, N)
-            act = cl.get_brain_area(name, xs_c)  # trials * T * N
+            act = _get_area_activity(name, xs_c)  # trials * T * N
 
             # Compute mean and SEM for the current condition
             mean_act_n = jnp.mean(act, axis=-1) # average over neurons -> (seeds, T)

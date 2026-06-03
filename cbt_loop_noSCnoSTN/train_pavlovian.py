@@ -35,13 +35,15 @@ def main():
 
     params, config = cbtl.init_params(
         jr.PRNGKey(train_cfg["seed"]),
-        n_c=rnn_cfg["n_c"],
+        n_c_exc=rnn_cfg["n_c_exc"],
+        n_c_inh=rnn_cfg["n_c_inh"],
         n_d1=rnn_cfg["n_d1"],
         n_d2=rnn_cfg["n_d2"],
         n_snc=rnn_cfg["n_snc"],
         n_snr=rnn_cfg["n_snr"],
         n_gpe=rnn_cfg["n_gpe"],
-        n_t=rnn_cfg["n_t"],
+        n_t_exc=rnn_cfg["n_t_exc"],
+        n_t_inh=rnn_cfg["n_t_inh"],
         n_input=inputs.shape[-1],
         n_output=1,
         g_bg=rnn_cfg["g_bg"],
@@ -54,28 +56,62 @@ def main():
         optax.adamw(learning_rate=cfg.OPTIM_CONFIG["learning_rate"]),
     )
 
-    best_params, losses, rewards = stmt.fit_rnn_reinforce(
-        cbtl.rnn_func,
-        params,
-        config,
-        inputs,
-        masks,
-        optimizer,
-        500, #train_cfg["num_iters"], # number of iters
-        log_interval=train_cfg["log_interval"],
-        seed=train_cfg["seed"],
-        baseline_momentum=rl_cfg["baseline_momentum"],
-        entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
-        batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
-        asym_coef=rl_cfg.get("asym_coef", 0.0),
-        asym_margin=rl_cfg.get("asym_margin", 1.0),
-        rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-        rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
-    )
+    mode = train_cfg.get("mode", "reinforce")
+    if mode == "supervised":
+        # Dense supervised regression onto the target trajectory. Structural
+        # priors are pulled from RL_CONFIG (off unless set there).
+        best_params, losses, rewards = stmt.fit_rnn_supervised(
+            cbtl.rnn_func,
+            params,
+            config,
+            inputs,
+            masks,
+            optimizer,
+            1000, # number of iters
+            batch_targets=targets,
+            log_interval=train_cfg["log_interval"],
+            seed=train_cfg["seed"],
+            loss_type=train_cfg.get("loss_type", "bce"),
+            asym_coef=rl_cfg.get("asym_coef", 0.0),
+            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
+            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
+            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
+            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+        )
+    else:
+        best_params, losses, rewards = stmt.fit_rnn_reinforce(
+            cbtl.rnn_func,
+            params,
+            config,
+            inputs,
+            masks,
+            optimizer,
+            1000,#train_cfg["num_iters"], # number of iters
+            log_interval=train_cfg["log_interval"],
+            seed=train_cfg["seed"],
+            baseline_momentum=rl_cfg["baseline_momentum"],
+            entropy_coef=rl_cfg["entropy_coef"],
+            objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+            batch_targets=targets,
+            brevity_coef=rl_cfg.get("brevity_coef", 0.1),
+            silence_coef=rl_cfg.get("silence_coef", 0.0),
+            tail_coef=rl_cfg.get("tail_coef", 0.1),
+            # Structural penalties disabled during Pavlovian: with tanh() wrapping
+            # every inter-area projection, weight-norm-based floors no longer map
+            # to effective drive (saturates at ~1 regardless of norm) and only push
+            # weights into the dead-gradient zone. Re-enabled in train_from_pavlovian.
+            asym_coef=0.0,
+            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            rest_pka_coef=0.0,
+            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            pathway_floor_coef=0.0,
+            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            c_snc_floor_coef=0.0,
+            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+        )
 
     out_path = cfg.pavlovian_params_path()
     with out_path.open("wb") as f:
@@ -85,7 +121,8 @@ def main():
     if losses:
         print(f"Final logged loss: {float(losses[-1]):.6f}")
     if rewards:
-        print(f"Final mean reward: {float(rewards[-1]):.4f}")
+        label = "Final mean accuracy" if mode == "supervised" else "Final mean reward"
+        print(f"{label}: {float(rewards[-1]):.4f}")
 
 
 if __name__ == "__main__":

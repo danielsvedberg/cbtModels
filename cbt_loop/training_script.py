@@ -35,14 +35,16 @@ def main():
 
     params, config = cbtl.init_params(
         jr.PRNGKey(train_cfg["seed"]),
-        n_c=rnn_cfg["n_c"],
+        n_c_exc=rnn_cfg["n_c_exc"],
+        n_c_inh=rnn_cfg["n_c_inh"],
         n_d1=rnn_cfg["n_d1"],
         n_d2=rnn_cfg["n_d2"],
         n_snc=rnn_cfg["n_snc"],
         n_snr=rnn_cfg["n_snr"],
         n_gpe=rnn_cfg["n_gpe"],
         n_stn=rnn_cfg["n_stn"],
-        n_t=rnn_cfg["n_t"],
+        n_t_exc=rnn_cfg["n_t_exc"],
+        n_t_inh=rnn_cfg["n_t_inh"],
         n_input=inputs.shape[-1],
         n_output=1,
         g_bg=rnn_cfg["g_bg"],
