@@ -21,9 +21,10 @@ import opto_script
 
 def _build_weight_matrix(params):
     """Assemble the full effective weight matrix including input and output lines."""
-    n_c_exc = params["J_c_ee"].shape[0]
+    n_c_U   = params["J_cU"].shape[0]
+    n_c_L   = params["J_cL"].shape[0]
     n_c_inh = params["J_c_ii"].shape[0]
-    n_c     = n_c_exc + n_c_inh
+    n_c     = n_c_U + n_c_L + n_c_inh
     n_d1  = params["J_d1"].shape[0]
     n_d2  = params["J_d2"].shape[0]
     n_snc = params["P_snc"].shape[0]
@@ -35,36 +36,31 @@ def _build_weight_matrix(params):
     n_t_inh = params["J_t_ii"].shape[0]
     n_t     = n_t_exc + n_t_inh
     n_med = params["J_med_w1"].shape[0] * 2  # 2 E + 2 I units
-    n_in  = params["B_cue_c_exc"].shape[1]   # number of input channels
+    n_in  = params["B_cue_cU"].shape[1]   # number of input channels
     n_out = params["C_med"].shape[0]      # number of output channels
 
-    # Helpers that promote split exc/inh blocks back to a single (n_post × n_c)
-    # / (n_post × n_t) view so the rest of this function can stay block-oriented.
-    zeros_post_c_inh = lambda n_post: np.zeros((n_post, n_c_inh))
-    zeros_post_t_inh = lambda n_post: np.zeros((n_post, n_t_inh))
-
-    def _from_c_exc(block):
-        # Project from cortex-exc only: pad zeros on the cortex-inh columns.
+    def _from_cU(block):
         block = np.array(block)
-        return np.concatenate([block, zeros_post_c_inh(block.shape[0])], axis=1)
+        return np.concatenate([block, np.zeros((block.shape[0], n_c_L + n_c_inh))], axis=1)
 
-    def _to_c_pools(exc_block, inh_block):
-        # Stack a pre→C_exc block on top of a pre→C_inh block (same pre width).
-        return np.concatenate([np.array(exc_block), np.array(inh_block)], axis=0)
+    def _from_cL(block):
+        block = np.array(block)
+        return np.concatenate([np.zeros((block.shape[0], n_c_U)), block,
+                               np.zeros((block.shape[0], n_c_inh))], axis=1)
 
     def _to_t_pools(exc_block, inh_block):
         return np.concatenate([np.array(exc_block), np.array(inh_block)], axis=0)
 
     def _assemble_J(ee, ei, ie, ii):
-        # Stack 4 blocks (ee, ei; ie, ii) into one (n_exc+n_inh, n_exc+n_inh) matrix.
         top = np.concatenate([np.array(ee), np.array(ei)], axis=1)
         bot = np.concatenate([np.array(ie), np.array(ii)], axis=1)
         return np.concatenate([top, bot], axis=0)
 
-    j_c_full = _assemble_J(
-        cbtl.exc(params["J_c_ee"]), cbtl.inh(params["J_c_ei"]),
-        cbtl.exc(params["J_c_ie"]), cbtl.inh(params["J_c_ii"]),
-    )
+    # Cortex recurrence: 3x3 block matrix in [cU, cL, c_inh] order (rows=post).
+    row_cU = np.concatenate([cbtl.exc(params["J_cU"]),    cbtl.exc(params["B_cL_cU"]), cbtl.inh(params["J_ci_cU"])], axis=1)
+    row_cL = np.concatenate([cbtl.exc(params["B_cU_cL"]), cbtl.exc(params["J_cL"]),    cbtl.inh(params["J_ci_cL"])], axis=1)
+    row_ci = np.concatenate([cbtl.exc(params["J_cU_ci"]), cbtl.exc(params["J_cL_ci"]), cbtl.inh(params["J_c_ii"])],  axis=1)
+    j_c_full = np.concatenate([row_cU, row_cL, row_ci], axis=0)
     j_t_full = _assemble_J(
         cbtl.exc(params["J_t_ee"]), cbtl.inh(params["J_t_ei"]),
         cbtl.exc(params["J_t_ie"]), cbtl.inh(params["J_t_ii"]),
@@ -90,26 +86,25 @@ def _build_weight_matrix(params):
         W[r0:r1, c0:c1] = np.array(block)
 
     # Input → Cortex (cue projects to both exc and inh pools).
-    place("Cortex",   "Input",    _to_c_pools(params["B_cue_c_exc"], params["B_cue_c_inh"]))
+    place("Cortex",   "Input",    np.concatenate(
+        [np.array(params["B_cue_cU"]), np.array(params["B_cue_cL"]), np.array(params["B_cue_c_inh"])], axis=0))
     # Recurrent and inter-area connections
     place("Cortex",   "Cortex",   j_c_full)
     # Thalamus → Cortex: only thalamic exc projects; cortex exc + inh receive.
-    b_t_c_full = np.concatenate(
-        [_to_c_pools(cbtl.exc(params["B_t_c_exc"]), cbtl.exc(params["B_t_c_inh"])),
-         np.zeros((n_c, n_t_inh))],
-        axis=1,
-    )
+    to_c_from_t_exc = np.concatenate(
+        [cbtl.exc(params["B_t_cU"]), np.zeros((n_c_L, n_t_exc)), cbtl.exc(params["B_t_c_inh"])], axis=0)
+    b_t_c_full = np.concatenate([to_c_from_t_exc, np.zeros((n_c, n_t_inh))], axis=1)
     place("Cortex",   "Thalamus", b_t_c_full)
-    place("D1",       "Cortex",   _from_c_exc(cbtl.exc(params["B_c_d1"])))
+    place("D1",       "Cortex",   _from_cU(cbtl.exc(params["B_cU_d1"])))
     place("D1",       "D1",       cbtl.inh(params["J_d1"]))
     # D1↔D2 lateral inhibition is optional (may be disabled in the model).
     if "B_d2_d1" in params:
         place("D1",       "D2",       cbtl.inh(params["B_d2_d1"]))
-    place("D2",       "Cortex",   _from_c_exc(cbtl.exc(params["B_c_d2"])))
+    place("D2",       "Cortex",   _from_cU(cbtl.exc(params["B_cU_d2"])))
     place("D2",       "D2",       cbtl.inh(params["J_d2"]))
     if "B_d1_d2" in params:
         place("D2",       "D1",       cbtl.inh(params["B_d1_d2"]))
-    place("SNc",      "Cortex",   _from_c_exc(cbtl.exc(params["B_c_snc"])))
+    place("SNc",      "Cortex",   _from_cL(cbtl.exc(params["B_cL_snc"])))
     place("SNc",      "STN",      cbtl.exc(params["B_stn_snc"]))
     place("SNc",      "D1",       cbtl.inh(params["B_d1_snc"]))
     place("SNc",      "D2",       cbtl.inh(params["B_d2_snc"]))
@@ -138,24 +133,21 @@ def _build_weight_matrix(params):
         g_a2 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a2"])))  # (n_d2,)
         place("D2", "Adenosine", (g_a2 * k_a).reshape(n_d2, 1))
     place("GPe",      "D2",       cbtl.inh(params["B_d2_gpe"]))
+    place("GPe",      "Cortex",   _from_cU(cbtl.exc(params["B_cU_gpe"])))  # cU → GPe (exc)
     place("GPe",      "STN",      cbtl.exc(params["B_stn_gpe"]))
     place("GPe",      "GPe",      cbtl.inh(params["J_gpe"]))
     place("STN",      "GPe",      cbtl.inh(params["B_gpe_stn"]))
-    place("STN",      "Cortex",   _from_c_exc(cbtl.exc(params["B_c_stn"])))  # hyperdirect pathway
+    place("STN",      "Cortex",   _from_cU(cbtl.exc(params["B_cU_stn"])) + _from_cL(cbtl.exc(params["B_cL_stn"])))  # hyperdirect cU & cL
     place("STN",      "STN",      cbtl.exc(params["J_stn"]))
     place("SNr",      "D1",       cbtl.inh(params["B_d1_snr"]))
     place("SNr",      "STN",      cbtl.exc(params["B_stn_snr"]))
     place("SNr",      "GPe",      cbtl.inh(params["B_gpe_snr"]))
-    place("SC",       "Cortex",   _from_c_exc(cbtl.exc(params["B_c_sc"])))
+    place("SC",       "Cortex",   _from_cU(cbtl.exc(params["B_cU_sc"])))
     place("SC",       "SNr",      cbtl.inh(params["B_snr_sc"]))
     place("SC",       "SC",       params["J_sc"])
     # Cortex → Thalamus: only cortical exc projects; thalamus exc + inh receive.
-    b_c_t_full = np.concatenate(
-        [_to_t_pools(cbtl.exc(params["B_c_t_exc"]), cbtl.exc(params["B_c_t_inh"])),
-         np.zeros((n_t, n_c_inh))],
-        axis=1,
-    )
-    place("Thalamus", "Cortex",   b_c_t_full)
+    b_cU_t = _to_t_pools(cbtl.exc(params["B_cU_t_exc"]), cbtl.exc(params["B_cU_t_inh"]))  # (n_t, n_c_U)
+    place("Thalamus", "Cortex",   _from_cU(b_cU_t))
     place("Thalamus", "SNr",      _to_t_pools(cbtl.inh(params["B_snr_t_exc"]),
                                               cbtl.inh(params["B_snr_t_inh"])))
     # SC → thalamus: SC excites both thalamic pools.
@@ -179,10 +171,10 @@ def _build_weight_matrix(params):
         [j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]],
     ])
     place("Medulla",  "Medulla",  j_med)
-    # B_c_med is (2, n_c_exc): cortex exc projects to medullary E units only.
+    # B_cL_med is (2, n_c_L): cL projects to medullary E units only (cL columns).
     r0 = offsets["Medulla"][0]
     c0, c1 = offsets["Cortex"]
-    W[r0:r0 + 2, c0:c0 + n_c_exc] = np.array(params["B_c_med"])
+    W[r0:r0 + 2, c0 + n_c_U:c0 + n_c_U + n_c_L] = np.array(params["B_cL_med"])
     # Medulla → Output: readout from E units only (first 2 columns of Medulla).
     r0, r1 = offsets["Output"]
     c0 = offsets["Medulla"][0]
@@ -262,7 +254,7 @@ def _match_input_channels(inputs, params):
     stays on channel 0 and any extra channels are filled with zeros (cue
     absent), which is the correct pure-STMT test condition.
     """
-    n_expected = params["B_cue_c_exc"].shape[1]
+    n_expected = params["B_cue_cU"].shape[1]
     n_have = inputs.shape[-1]
     if n_have == n_expected:
         return inputs
@@ -300,7 +292,8 @@ def _load_bundle():
     params = bundle
     _, config = cbtl.init_params(
         jr.PRNGKey(0),
-        n_c_exc=params["J_c_ee"].shape[0],
+        n_c_U=params["J_cU"].shape[0],
+        n_c_L=params["J_cL"].shape[0],
         n_c_inh=params["J_c_ii"].shape[0],
         n_d1=params["J_d1"].shape[0],
         n_d2=params["J_d2"].shape[0],
@@ -343,10 +336,10 @@ def lesion_nigrostriatal(params):
 def lesion_thalamocortical(params):
     """Zero out the reciprocal thalamus↔cortex (T→C and C→T) pathways."""
     p = dict(params)
-    p["B_t_c_exc"] = jnp.zeros_like(params["B_t_c_exc"])
+    p["B_t_cU"] = jnp.zeros_like(params["B_t_cU"])
     p["B_t_c_inh"] = jnp.zeros_like(params["B_t_c_inh"])
-    p["B_c_t_exc"] = jnp.zeros_like(params["B_c_t_exc"])
-    p["B_c_t_inh"] = jnp.zeros_like(params["B_c_t_inh"])
+    p["B_cU_t_exc"] = jnp.zeros_like(params["B_cU_t_exc"])
+    p["B_cU_t_inh"] = jnp.zeros_like(params["B_cU_t_inh"])
     return p
 
 

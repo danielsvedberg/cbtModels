@@ -72,10 +72,11 @@ def _make_dual_cue_weights(params, rng_key):
     Column 0 (timing/STMT cue) is freshly randomized — it is a new cue whose
     meaning differs from the Pavlovian task. Column 1 (Pavlovian cue) carries
     over the weights learned during Pavlovian training. Both columns are
-    trainable parameters for both ``B_cue_c_exc`` and ``B_cue_c_inh``.
+    trainable parameters for all cortical pools (``B_cue_cU``, ``B_cue_cL``,
+    ``B_cue_c_inh``).
     """
     p = dict(params)
-    rng_exc, rng_inh = jr.split(rng_key, 2)
+    rng_U, rng_L, rng_inh = jr.split(rng_key, 3)
 
     def _extend(key, rng):
         # Pavlovian cue column lives at the last column (handles either a
@@ -86,7 +87,8 @@ def _make_dual_cue_weights(params, rng_key):
         timing_col = jr.normal(rng, (n_rows, 1))
         return jnp.concatenate([timing_col, pav_col], axis=1)
 
-    p["B_cue_c_exc"] = _extend("B_cue_c_exc", rng_exc)
+    p["B_cue_cU"] = _extend("B_cue_cU", rng_U)
+    p["B_cue_cL"] = _extend("B_cue_cL", rng_L)
     p["B_cue_c_inh"] = _extend("B_cue_c_inh", rng_inh)
     return p
 
@@ -112,7 +114,8 @@ def main():
         params = bundle
         _, config = cbtl.init_params(
             jr.PRNGKey(0),
-            n_c_exc=params["J_c_ee"].shape[0],
+            n_c_U=params["J_cU"].shape[0],
+            n_c_L=params["J_cL"].shape[0],
             n_c_inh=params["J_c_ii"].shape[0],
             n_d1=params["J_d1"].shape[0],
             n_d2=params["J_d2"].shape[0],

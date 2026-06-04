@@ -39,7 +39,7 @@ def match_input_channels(inputs, params):
     STMT cue fed to a model trained with an extra Pavlovian-cue channel) are
     padded with zeros — the missing cues are simply treated as absent.
     """
-    n_expected = params["B_cue_c_exc"].shape[1]
+    n_expected = params["B_cue_cU"].shape[1]
     n_have = inputs.shape[-1]
     if n_have >= n_expected:
         return inputs
@@ -58,7 +58,8 @@ STATE_AREA_ORDER = (
 
 def init_params(
     rng_key,
-    n_c_exc=8,
+    n_c_U=5,
+    n_c_L=4,
     n_c_inh=4,
     n_d1=6,
     n_d2=6,
@@ -72,7 +73,7 @@ def init_params(
     n_output=1,
     g_bg=0.5,
     g_nm=0.5,
-    noise_std=0.01,
+    noise_std=0.05,
 ):
     """Initialize multiregion CBT loop params and runtime config.
 
@@ -84,10 +85,19 @@ def init_params(
     skeys = jr.split(rng_key, 60)
 
     params = {
-        # Cortex E/I recurrence (4 blocks: post × pre, pre identity sets sign).
-        "J_c_ee": (g_bg / math.sqrt(n_c_exc)) * jr.normal(skeys[2],  (n_c_exc, n_c_exc)),
-        "J_c_ei": (g_bg / math.sqrt(n_c_inh)) * jr.normal(skeys[42], (n_c_exc, n_c_inh)),
-        "J_c_ie": (g_bg / math.sqrt(n_c_exc)) * jr.normal(skeys[43], (n_c_inh, n_c_exc)),
+        # Cortex split into two excitatory PT-like populations — cU (upper) and
+        # cL (lower) — plus a shared inhibitory pool c_inh (Economo et al. 2018,
+        # see README). Within-population excitatory recurrence:
+        "J_cU": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[2],  (n_c_U, n_c_U)),
+        "J_cL": (g_bg / math.sqrt(n_c_L)) * jr.normal(skeys[52], (n_c_L, n_c_L)),
+        # Reciprocal excitatory cU <-> cL (post, pre).
+        "B_cU_cL": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[53], (n_c_L, n_c_U)),  # cU -> cL
+        "B_cL_cU": (g_bg / math.sqrt(n_c_L)) * jr.normal(skeys[54], (n_c_U, n_c_L)),  # cL -> cU
+        # cU / cL -> c_inh (excitatory); c_inh -> cU / cL and c_inh -> c_inh (inhibitory).
+        "J_cU_ci": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[43], (n_c_inh, n_c_U)),
+        "J_cL_ci": (g_bg / math.sqrt(n_c_L)) * jr.normal(skeys[56], (n_c_inh, n_c_L)),
+        "J_ci_cU": (g_bg / math.sqrt(n_c_inh)) * jr.normal(skeys[42], (n_c_U, n_c_inh)),
+        "J_ci_cL": (g_bg / math.sqrt(n_c_inh)) * jr.normal(skeys[55], (n_c_L, n_c_inh)),
         "J_c_ii": (g_bg / math.sqrt(n_c_inh)) * jr.normal(skeys[44], (n_c_inh, n_c_inh)),
         "J_d1": (g_bg / math.sqrt(n_d1)) * jr.normal(skeys[0], (n_d1, n_d1)),
         "J_d2": (g_bg / math.sqrt(n_d2)) * jr.normal(skeys[8], (n_d2, n_d2)),
@@ -101,19 +111,22 @@ def init_params(
         "J_t_ei": (g_bg / math.sqrt(n_t_inh)) * jr.normal(skeys[45], (n_t_exc, n_t_inh)),
         "J_t_ie": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[46], (n_t_inh, n_t_exc)),
         "J_t_ii": (g_bg / math.sqrt(n_t_inh)) * jr.normal(skeys[47], (n_t_inh, n_t_inh)),
-        # Cue → cortex (both pools receive).
-        "B_cue_c_exc": (1 / math.sqrt(n_input)) * jr.normal(skeys[3],  (n_c_exc, n_input)),
+        # Cue → cortex (all three pools receive).
+        "B_cue_cU": (1 / math.sqrt(n_input)) * jr.normal(skeys[3],  (n_c_U, n_input)),
+        "B_cue_cL": (1 / math.sqrt(n_input)) * jr.normal(skeys[57], (n_c_L, n_input)),
         "B_cue_c_inh": (1 / math.sqrt(n_input)) * jr.normal(skeys[48], (n_c_inh, n_input)),
-        # Thalamus exc → cortex (both pools receive).
-        "B_t_c_exc": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[4],  (n_c_exc, n_t_exc)),
+        # Thalamus exc → cortex: reciprocal with cU; feedforward inhibition to c_inh.
+        "B_t_cU": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[4],  (n_c_U, n_t_exc)),
         "B_t_c_inh": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[49], (n_c_inh, n_t_exc)),
-        # Cortex exc → thalamus (both pools receive).
-        "B_c_t_exc": (1 / math.sqrt(n_c_exc)) * jr.normal(skeys[29], (n_t_exc, n_c_exc)),
-        "B_c_t_inh": (1 / math.sqrt(n_c_exc)) * jr.normal(skeys[50], (n_t_inh, n_c_exc)),
-        # Cortex exc → striatum / SNc / medulla.
-        "B_c_d1": (g_bg / math.sqrt(n_c_exc)) * jr.normal(skeys[1], (n_d1, n_c_exc)),
-        "B_c_d2": (g_bg / math.sqrt(n_c_exc)) * jr.normal(skeys[12], (n_d2, n_c_exc)),
-        "B_c_snc": (1 / math.sqrt(n_c_exc)) * jr.normal(skeys[32], (n_snc, n_c_exc)),
+        # cU → thalamus (both thalamic pools receive).
+        "B_cU_t_exc": (1 / math.sqrt(n_c_U)) * jr.normal(skeys[29], (n_t_exc, n_c_U)),
+        "B_cU_t_inh": (1 / math.sqrt(n_c_U)) * jr.normal(skeys[50], (n_t_inh, n_c_U)),
+        # cU → striatum / GPe (basal-ganglia-projecting upper population).
+        "B_cU_d1": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[1], (n_d1, n_c_U)),
+        "B_cU_d2": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[12], (n_d2, n_c_U)),
+        "B_cU_gpe": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[58], (n_gpe, n_c_U)),
+        # cL → SNc (descending lower population; also → medulla E units below).
+        "B_cL_snc": (1 / math.sqrt(n_c_L)) * jr.normal(skeys[32], (n_snc, n_c_L)),
         "B_d1_snc": (1 / math.sqrt(n_d1)) * jr.normal(skeys[17], (n_snc, n_d1)),
         "B_d2_snc": (1 / math.sqrt(n_d2)) * jr.normal(skeys[28], (n_snc, n_d2)),
         "B_d1_snr": (1 / math.sqrt(n_d1)) * jr.normal(skeys[22], (n_snr, n_d1)),
@@ -136,7 +149,7 @@ def init_params(
         "J_med_w1": (g_bg / math.sqrt(2)) * jr.normal(skeys[13], (2, 2)),  # within pair 1
         "J_med_w2": (g_bg / math.sqrt(2)) * jr.normal(skeys[21], (2, 2)),  # within pair 2
         "J_med_x":  (g_bg / math.sqrt(2)) * jr.normal(skeys[30], (2, 2)),  # cross-pair
-        "B_c_med": (1 / math.sqrt(n_c_exc)) * jr.normal(skeys[14], (n_med // 2, n_c_exc)),  # cortex (exc) → E units only
+        "B_cL_med": (1 / math.sqrt(n_c_L)) * jr.normal(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E units only
         "B_snr_med": (1 / math.sqrt(n_snr)) * jr.normal(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E units (inh)
         "C_med": (1 / math.sqrt(n_med)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
         #"rb": jnp.abs((1 / math.sqrt(n_med)) * jr.normal(skeys[16], (n_output,))),
@@ -147,7 +160,8 @@ def init_params(
         "out_gain": jnp.array(4.0),
         "out_bias": jnp.array(-1.0986123),  # logit(0.25)
         # Trainable initial states (resting/baseline activity for each area).
-        "x_c0_exc": jnp.ones((n_c_exc,)) * 0.1,
+        "x_c0_U": jnp.ones((n_c_U,)) * 0.1,
+        "x_c0_L": jnp.ones((n_c_L,)) * 0.1,
         "x_c0_inh": jnp.ones((n_c_inh,)) * 0.1,
         "x_d10":  jnp.ones((n_d1,))  * 0.1,
         "x_d20":  jnp.ones((n_d2,))  * 0.1,
@@ -171,7 +185,8 @@ def init_params(
     }
 
     config = {
-        "n_c_exc": n_c_exc,
+        "n_c_U": n_c_U,
+        "n_c_L": n_c_L,
         "n_c_inh": n_c_inh,
         "n_t_exc": n_t_exc,
         "n_t_inh": n_t_inh,
@@ -225,7 +240,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
             return jnp.asarray(params[key])
         return jnp.asarray(config.get(key, fallback))
 
-    n_c_exc_ = params["J_c_ee"].shape[0]
+    n_c_U_   = params["J_cU"].shape[0]
+    n_c_L_   = params["J_cL"].shape[0]
     n_c_inh_ = params["J_c_ii"].shape[0]
     n_d1_    = params["J_d1"].shape[0]
     n_d2_    = params["J_d2"].shape[0]
@@ -236,7 +252,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     n_t_inh_ = params["J_t_ii"].shape[0]
     n_med_   = params["J_med_w1"].shape[0] * 2
 
-    x_c0_exc = _x0("x_c0_exc", jnp.ones(n_c_exc_) * 0.2)
+    x_c0_U   = _x0("x_c0_U",   jnp.ones(n_c_U_)   * 0.2)
+    x_c0_L   = _x0("x_c0_L",   jnp.ones(n_c_L_)   * 0.2)
     x_c0_inh = _x0("x_c0_inh", jnp.ones(n_c_inh_) * 0.2)
     x_d10    = _x0("x_d10",    jnp.ones(n_d1_)    * 0.2)
     x_d20    = _x0("x_d20",    jnp.ones(n_d2_)    * 0.2)
@@ -254,7 +271,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     rng_key, init_key, step_key = jr.split(rng_key, 3)
 
     noise_std = jnp.asarray(config.get("noise_std", 0.0))
-    x_c0_exc = jnp.minimum(nln(x_c0_exc + noise_std * jr.normal(init_key, x_c0_exc.shape)), 0.5)
+    x_c0_U = jnp.minimum(nln(x_c0_U + noise_std * jr.normal(init_key, x_c0_U.shape)), 0.5)
+    x_c0_L = jnp.minimum(nln(x_c0_L + noise_std * jr.normal(init_key, x_c0_L.shape)), 0.5)
     x_c0_inh = jnp.minimum(nln(x_c0_inh + noise_std * jr.normal(init_key, x_c0_inh.shape)), 0.5)
     x_d10 = nln(x_d10 + noise_std * jr.normal(init_key, x_d10.shape))
     x_d20 = nln(x_d20 + noise_std * jr.normal(init_key, x_d20.shape))
@@ -265,11 +283,17 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_t0_inh = nln(x_t0_inh + noise_std * jr.normal(init_key, x_t0_inh.shape))
     x_med0 = nln(x_med0 + noise_std * jr.normal(init_key, x_med0.shape))
 
-    # Cortex E/I recurrent blocks. Sign follows presynaptic identity (Dale's law).
-    j_c_ee = exc(params["J_c_ee"])  # C_exc → C_exc
-    j_c_ei = inh(params["J_c_ei"])  # C_inh → C_exc
-    j_c_ie = exc(params["J_c_ie"])  # C_exc → C_inh
-    j_c_ii = inh(params["J_c_ii"])  # C_inh → C_inh
+    # Cortex blocks. Sign follows presynaptic identity (Dale's law). cU/cL are
+    # excitatory PT-like populations; c_inh is the shared inhibitory pool.
+    j_cU = exc(params["J_cU"])        # cU → cU
+    j_cL = exc(params["J_cL"])        # cL → cL
+    b_cU_cL = exc(params["B_cU_cL"])  # cU → cL
+    b_cL_cU = exc(params["B_cL_cU"])  # cL → cU
+    j_cU_ci = exc(params["J_cU_ci"])  # cU → c_inh
+    j_cL_ci = exc(params["J_cL_ci"])  # cL → c_inh
+    j_ci_cU = inh(params["J_ci_cU"])  # c_inh → cU
+    j_ci_cL = inh(params["J_ci_cL"])  # c_inh → cL
+    j_c_ii = inh(params["J_c_ii"])    # c_inh → c_inh
     # Thalamus E/I recurrent blocks.
     j_t_ee = exc(params["J_t_ee"])  # T_exc → T_exc
     j_t_ei = inh(params["J_t_ei"])  # T_inh → T_exc
@@ -284,23 +308,25 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     p_snc = exc(params["P_snc"])
     p_gpe = exc(params.get("P_gpe", jnp.zeros(j_gpe.shape[0])))
 
-    # Cue → cortex (both pools).
-    b_cue_c_exc = exc(params["B_cue_c_exc"])
+    # Cue → cortex (all three pools).
+    b_cue_cU = exc(params["B_cue_cU"])
+    b_cue_cL = exc(params["B_cue_cL"])
     b_cue_c_inh = exc(params["B_cue_c_inh"])
-    # Thalamus exc → cortex (both pools).
-    b_t_c_exc = exc(params["B_t_c_exc"])
+    # Thalamus exc → cU (reciprocal) and → c_inh (feedforward inhibition).
+    b_t_cU = exc(params["B_t_cU"])
     b_t_c_inh = exc(params["B_t_c_inh"])
-    # Cortex exc → thalamus (both pools).
-    b_c_t_exc = exc(params["B_c_t_exc"])
-    b_c_t_inh = exc(params["B_c_t_inh"])
-    # Cortex exc → downstream regions.
-    b_c_d1 = exc(params["B_c_d1"])
-    b_c_d2 = exc(params["B_c_d2"])
-    b_c_snc = exc(params["B_c_snc"])
+    # cU → thalamus (both thalamic pools).
+    b_cU_t_exc = exc(params["B_cU_t_exc"])
+    b_cU_t_inh = exc(params["B_cU_t_inh"])
+    # cU → basal ganglia (striatum + GPe); cL → SNc / medulla (below).
+    b_cU_d1 = exc(params["B_cU_d1"]) + 0.05
+    b_cU_d2 = exc(params["B_cU_d2"]) + 0.05
+    b_cU_gpe = exc(params["B_cU_gpe"]) * 0.5
+    b_cL_snc = exc(params["B_cL_snc"]) + 0.05
     b_d1_snc = inh(params["B_d1_snc"])
     b_d2_snc = inh(params["B_d2_snc"])
     b_d1_snr = inh(params["B_d1_snr"])
-    b_d2_gpe = inh(params["B_d2_gpe"]) - 0.05
+    b_d2_gpe = inh(params["B_d2_gpe"]) - 0.15
     b_gpe_snr = inh(params["B_gpe_snr"]) - 0.05
     b_gpe_snc = inh(params["B_gpe_snc"])
     # SNr → thalamus (both pools).
@@ -344,7 +370,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         jnp.stack([j_w1[1, 0], j_x[1, 0],  j_w1[1, 1], j_x[1, 1]]),    # I0
         jnp.stack([j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]]),   # I1
     ])
-    b_c_med = exc(params["B_c_med"])  # shape (n_med//2, n_c_exc): projects to E units only
+    b_cL_med = exc(params["B_cL_med"])  # shape (n_med//2, n_c_L): cL → medulla E units only
     # SNr → Medulla E units: inhibitory with a minimum magnitude (floored exc,
     # negated) so each weight stays ≤ -snr_med_floor and the tonic gate persists.
     snr_med_floor = config.get("snr_med_floor", 0.1)
@@ -399,7 +425,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
     def _step(carry, inp_stim_rng):
         (x_d1, x_d2,
-         x_c_exc, x_c_inh,
+         x_c_U, x_c_L, x_c_inh,
          x_t_exc, x_t_inh,
          x_snr, x_gpe, x_snc, pka_d1, pka_d2, x_med) = carry
         u_t, stim_t, step_rng = inp_stim_rng
@@ -408,13 +434,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
         # add noise
         (rng_d1, rng_d2,
-         rng_c_exc, rng_c_inh,
+         rng_c_U, rng_c_L, rng_c_inh,
          rng_t_exc, rng_t_inh,
-         rng_snr, rng_gpe, rng_snc, rng_med) = jr.split(step_rng, 10)
+         rng_snr, rng_gpe, rng_snc, rng_med) = jr.split(step_rng, 11)
         coef = noise_std / jnp.sqrt(2.0 * tau_c)
         x_d1 = x_d1 + coef * jr.normal(rng_d1, x_d1.shape)
         x_d2 = x_d2 + coef * jr.normal(rng_d2, x_d2.shape)
-        x_c_exc = x_c_exc + coef * jr.normal(rng_c_exc, x_c_exc.shape)
+        x_c_U = x_c_U + coef * jr.normal(rng_c_U, x_c_U.shape)
+        x_c_L = x_c_L + coef * jr.normal(rng_c_L, x_c_L.shape)
         x_c_inh = x_c_inh + coef * jr.normal(rng_c_inh, x_c_inh.shape)
         x_t_exc = x_t_exc + coef * jr.normal(rng_t_exc, x_t_exc.shape)
         x_t_inh = x_t_inh + coef * jr.normal(rng_t_inh, x_t_inh.shape)
@@ -424,17 +451,25 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_snc = x_snc + coef_snc * jr.normal(rng_snc, x_snc.shape)
         x_med = x_med + coef * jr.normal(rng_med, x_med.shape)
 
-        # cortex: snapshot the cross-pool recurrent drive before overwriting
-        # either pool so both updates see the same pre-step state.
-        c_rec_to_exc = tanh(j_c_ee @ x_c_exc + j_c_ei @ x_c_inh)
-        c_rec_to_inh = tanh(j_c_ie @ x_c_exc + j_c_ii @ x_c_inh)
+        # cortex: cU/cL excitatory PT populations + shared inhibitory c_inh.
+        # Snapshot every recurrent/cross-pool drive before overwriting any pool.
+        cU_rec = tanh(j_cU @ x_c_U + b_cL_cU @ x_c_L + j_ci_cU @ x_c_inh)
+        cL_rec = tanh(j_cL @ x_c_L + b_cU_cL @ x_c_U + j_ci_cL @ x_c_inh)
+        ci_rec = tanh(j_cU_ci @ x_c_U + j_cL_ci @ x_c_L + j_c_ii @ x_c_inh)
 
-        x_c_exc = (1.0 - 1.0 / tau_c) * x_c_exc + (1.0 / tau_c) * c_rec_to_exc
-        x_c_exc = x_c_exc + (1.0 / tau_c) * tanh(b_t_c_exc @ x_t_exc)
-        x_c_exc = x_c_exc + (1.0 / tau_c) * tanh(b_cue_c_exc @ u_t)
-        x_c_exc = nln(x_c_exc)
+        # cU: reciprocal thalamic input + cue.
+        x_c_U = (1.0 - 1.0 / tau_c) * x_c_U + (1.0 / tau_c) * cU_rec
+        x_c_U = x_c_U + (1.0 / tau_c) * tanh(b_t_cU @ x_t_exc)
+        x_c_U = x_c_U + (1.0 / tau_c) * tanh(b_cue_cU @ u_t)
+        x_c_U = nln(x_c_U)
 
-        x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * c_rec_to_inh
+        # cL: cue only (no direct thalamic input).
+        x_c_L = (1.0 - 1.0 / tau_c) * x_c_L + (1.0 / tau_c) * cL_rec
+        x_c_L = x_c_L + (1.0 / tau_c) * tanh(b_cue_cL @ u_t)
+        x_c_L = nln(x_c_L)
+
+        # c_inh: thalamic feedforward inhibition + cue.
+        x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * ci_rec
         x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_t_c_inh @ x_t_exc)
         x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_cue_c_inh @ u_t)
         x_c_inh = nln(x_c_inh)
@@ -444,18 +479,18 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         t_rec_to_inh = tanh(j_t_ie @ x_t_exc + j_t_ii @ x_t_inh)
 
         x_t_exc = (1.0 - 1.0 / tau_t) * x_t_exc + (1.0 / tau_t) * t_rec_to_exc
-        x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_c_t_exc @ x_c_exc)
+        x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_cU_t_exc @ x_c_U)
         x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_snr_t_exc @ x_snr)
         x_t_exc = nln(x_t_exc)
 
         x_t_inh = (1.0 - 1.0 / tau_t) * x_t_inh + (1.0 / tau_t) * t_rec_to_inh
-        x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_c_t_inh @ x_c_exc)
+        x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_cU_t_inh @ x_c_U)
         x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_snr_t_inh @ x_snr)
         x_t_inh = nln(x_t_inh)
 
         x_snc = (1.0 - (1.0 / tau_snc)) * x_snc
         x_snc = x_snc + (1.0 / tau_snc) * snc_pacer
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_c_snc @ x_c_exc)
+        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_cL_snc @ x_c_L)
         x_snc = x_snc + (1.0 / tau_snc) * tanh(b_d1_snc @ x_d1)
         x_snc = x_snc + (1.0 / tau_snc) * tanh(b_d2_snc @ x_d2)
         x_snc = x_snc + (1.0 / tau_snc) * tanh(b_gpe_snc @ x_gpe)
@@ -483,14 +518,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
         x_d1 = x_d1 + (1.0 / tau_d1) * tanh(j_d1 @ x_d1)
-        x_d1 = x_d1 + (1.0 / tau_d1) * tanh(b_c_d1 @ x_c_exc)
+        x_d1 = x_d1 + (1.0 / tau_d1) * tanh(b_cU_d1 @ x_c_U)
         x_d1 = x_d1 + (1.0 / tau_d1) * tanh(b_d2_d1 @ x_d2)
         x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
         x_d1 = bg_nln(x_d1, pka_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
         x_d2 = x_d2 + (1.0 / tau_d2) * tanh(j_d2 @ x_d2)
-        x_d2 = x_d2 + (1.0 / tau_d2) * tanh(b_c_d2 @ x_c_exc)
+        x_d2 = x_d2 + (1.0 / tau_d2) * tanh(b_cU_d2 @ x_c_U)
         x_d2 = x_d2 + (1.0 / tau_d2) * tanh(b_d1_d2 @ x_d1)
         x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
         x_d2 = bg_nln(x_d2, pka_d2)
@@ -498,6 +533,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
         x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer
         x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_d2_gpe @ x_d2)
+        x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_cU_gpe @ x_c_U)  # cU → GPe (exc)
         x_gpe = nln(x_gpe)
 
         x_snr = (1.0 - (1.0 / tau_snr)) * x_snr
@@ -511,7 +547,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_med = (1.0 - (1.0 / tau_med)) * x_med 
         x_med = x_med + (1.0 / tau_med) * tanh(j_med @ x_med)
         x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_snr_med @ x_snr))  # SNr → Medulla E units only
-        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_c_med @ x_c_exc))  # cortex → E units only
+        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_cL_med @ x_c_L))  # cL → medulla E units only
         x_med = nln(x_med)
 
         #y_t = nln(c_med @ x_med[:2])  # floored readout (rests at 0 -> no RL exploration)
@@ -519,14 +555,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # policy explores, with out_gain giving dynamic range above/below rest.
         y_t = nln(out_gain * (c_med @ x_med[:2]))  # readout from E units only
 
-        # Pack the full cortex/thalamus state ([exc..., inh...]) into the output
-        # so downstream analysis code (get_brain_area, slope, ratios) still sees
-        # a single Cortex / Thalamus array.
-        x_c = jnp.concatenate([x_c_exc, x_c_inh])
+        # Pack the full cortex/thalamus state ([cU..., cL..., c_inh...]) into the
+        # output so downstream analysis code (get_brain_area, slope, ratios) still
+        # sees a single Cortex / Thalamus array.
+        x_c = jnp.concatenate([x_c_U, x_c_L, x_c_inh])
         x_t = jnp.concatenate([x_t_exc, x_t_inh])
 
         new_carry = (x_d1, x_d2,
-                     x_c_exc, x_c_inh,
+                     x_c_U, x_c_L, x_c_inh,
                      x_t_exc, x_t_inh,
                      x_snr, x_gpe, x_snc, pka_d1, pka_d2, x_med)
         out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_snr, x_t, pka_d1, pka_d2, x_med)
@@ -536,7 +572,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     _, (ys, xc, xd1, xd2, xsnc, xgpe, xsnr, xt, pkad1, pkad2, xmed) = lax.scan(
         _step,
         (x_d10, x_d20,
-         x_c0_exc, x_c0_inh,
+         x_c0_U, x_c0_L, x_c0_inh,
          x_t0_exc, x_t0_inh,
          x_snr0, x_gpe0, x_snc0, pka_d10, pka_d20, x_med0),
         (inputs, opto_stimulation, step_keys),

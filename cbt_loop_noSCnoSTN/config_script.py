@@ -12,7 +12,9 @@ SEED_CONFIG = {
 }
 
 RNN_CONFIG = {
-    "n_c_exc": 9,
+    # Cortex excitatory pool split into two PT-like populations (Economo 2018).
+    "n_c_U": 5,
+    "n_c_L": 4,
     "n_c_inh": 3,
     "n_d1": 8,
     "n_d2": 8,

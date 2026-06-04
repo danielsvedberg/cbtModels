@@ -13,7 +13,9 @@ SEED_CONFIG = {
 
 RNN_CONFIG = {
     # Cortex / thalamus follow Dale's law as separate E/I pools.
-    "n_c_exc": 9,
+    # Cortex exc split into PT-like cU/cL (Economo 2018).
+    "n_c_U": 5,
+    "n_c_L": 4,
     "n_c_inh": 3,
     "n_d1": 8,
     "n_d2": 8,

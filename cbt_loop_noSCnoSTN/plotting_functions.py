@@ -49,7 +49,8 @@ def _get_area_activity(name, xs):
     """
     if name.startswith('Cortex'):
         full = cl.get_brain_area('Cortex', xs)
-        n_exc = cs.RNN_CONFIG['n_c_exc']
+        # Cortex packed as [cU..., cL..., c_inh...].
+        n_exc = cs.RNN_CONFIG['n_c_U'] + cs.RNN_CONFIG['n_c_L']
         if name.endswith('(exc)'):
             return full[..., :n_exc]
         if name.endswith('(inh)'):

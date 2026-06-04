@@ -74,11 +74,11 @@ def _make_dual_cue_weights(params, rng_key):
     over the weights learned during Pavlovian training. Both columns are
     trainable parameters and are updated during this run. Cortex follows Dale's
     law, so the cue projects to the excitatory and inhibitory pools through two
-    separate weight tensors (B_cue_c_exc / B_cue_c_inh).
+    separate weight tensors per cortical pool (B_cue_cU / B_cue_cL / B_cue_c_inh).
     """
     p = dict(params)
-    k_exc, k_inh = jr.split(rng_key)
-    for key, sub in (("B_cue_c_exc", k_exc), ("B_cue_c_inh", k_inh)):
+    k_U, k_L, k_inh = jr.split(rng_key, 3)
+    for key, sub in (("B_cue_cU", k_U), ("B_cue_cL", k_L), ("B_cue_c_inh", k_inh)):
         pav_col = jnp.asarray(params[key])[:, -1:]  # (n, 1) carried-over Pavlovian cue
         n = pav_col.shape[0]
         timing_col = jr.normal(sub, (n, 1))         # fresh timing-cue vector
@@ -107,7 +107,8 @@ def main():
         params = bundle
         _, config = cbtl.init_params(
             jr.PRNGKey(0),
-            n_c_exc=params["J_c_ee"].shape[0],
+            n_c_U=params["J_cU"].shape[0],
+            n_c_L=params["J_cL"].shape[0],
             n_c_inh=params["J_c_ii"].shape[0],
             n_d1=params["J_d1"].shape[0],
             n_d2=params["J_d2"].shape[0],
