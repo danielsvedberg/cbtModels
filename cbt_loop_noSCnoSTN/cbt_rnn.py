@@ -27,8 +27,8 @@ def nln(x):
 
 
 def bg_nln(x, b):
-    #return stmt.bg_nln(x)
-    return sigmoid(4*(x-1+b))
+    return stmt.bg_nln(x, b)
+    #return sigmoid(4*(x-1+b))
     #return jnp.maximum(0, tanh(b*2*x))
 
 
@@ -58,8 +58,8 @@ STATE_AREA_ORDER = (
 
 def init_params(
     rng_key,
-    n_c_exc=9,
-    n_c_inh=3,
+    n_c_exc=8,
+    n_c_inh=4,
     n_d1=6,
     n_d2=6,
     n_snc=4,
@@ -206,9 +206,13 @@ def init_params(
         "k_a_cap": 1.0,
         "snc_pacer_min": 0.05,
         "snc_pacer_max": 0.15,
-        "snr_pacer_max": 0.7,
-        "snr_pacer_min": 0.1,
-        "gpe_pacer_max": 0.6,
+        "snr_pacer_max": 0.85,
+        "snr_pacer_min": 0.5,
+        # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
+        # (caps at -1), so the tonic pacer floor must exceed ~1 to keep GPe from
+        # being silenced; gpe_pacer stays in [gpe_pacer_min, gpe_pacer_max] >= 1.
+        "gpe_pacer_min": 0.45,
+        "gpe_pacer_max": 0.8,
         "noise_std": noise_std,
     }
     return params, config
@@ -296,8 +300,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_d1_snc = inh(params["B_d1_snc"])
     b_d2_snc = inh(params["B_d2_snc"])
     b_d1_snr = inh(params["B_d1_snr"])
-    b_d2_gpe = inh(params["B_d2_gpe"])
-    b_gpe_snr = inh(params["B_gpe_snr"])
+    b_d2_gpe = inh(params["B_d2_gpe"]) - 0.05
+    b_gpe_snr = inh(params["B_gpe_snr"]) - 0.05
     b_gpe_snc = inh(params["B_gpe_snc"])
     # SNr → thalamus (both pools).
     b_snr_t_exc = inh(params["B_snr_t_exc"])
@@ -374,15 +378,16 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     k_a_floor = config.get("k_a_floor", 0.05)
     k_a_cap = config.get("k_a_cap", 1.0)
     k_a = k_a_floor + sigmoid(jnp.asarray(params["k_a"])) * (k_a_cap - k_a_floor)
-    snc_pacer_min = config.get("snc_pacer_min", 0.05)
+    snc_pacer_min = config.get("snc_pacer_min", 0.4)
     snc_pacer_max = config.get("snc_pacer_max", 0.15)
     snr_pacer_max = config.get("snr_pacer_max", 0.8)
     snr_pacer_min = config.get("snr_pacer_min", 0.4)
     gpe_pacer_max = config.get("gpe_pacer_max", 0.8)
+    gpe_pacer_min = config.get("gpe_pacer_min", 0.4)
 
     snc_pacer = snc_pacer_min + sigmoid(p_snc) * (snc_pacer_max - snc_pacer_min)
     snr_pacer = snr_pacer_min + sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
-    gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
+    gpe_pacer = gpe_pacer_min + sigmoid(p_gpe) * (gpe_pacer_max - gpe_pacer_min)
 
     tau_med = config.get("tau_med", 5.0)
 
@@ -550,8 +555,10 @@ def rnn_func(params, config, batch_inputs, opto_stim, rng_keys):
     else:
         batch_stim = opto_stim
     ys, xs = batched_rnn(params, config, batch_inputs, batch_stim, rng_keys)
-    # State tuple ends with (..., pkad1, pkad2, xmed); expose PKA traces for loss shaping.
-    return ys, xs[-3], xs[-2]
+    # State tuple ends with (..., pkad1, pkad2, xmed); expose PKA traces plus the
+    # GPe trajectory for loss shaping (PKA asymmetry + GPe activity floor).
+    gpe = xs[STATE_AREA_ORDER.index("GPe")]
+    return ys, xs[-3], xs[-2], gpe
 
 
 def evaluate(params, config, all_inputs, noise_std=None, n_seeds=8):

@@ -9,11 +9,9 @@ from jax.nn import tanh
 
 
 def exc(w):
-    return jax.nn.softplus(w)
-    #return jnp.maximum(0, w)
+    return jax.nn.sigmoid(w)
+    #return jnp.maximum(0, jnp.tanh(w))
     #return jnp.abs(w)
-
-
 def inh(w):
     return -exc(w)
     #return -jnp.abs(w)
@@ -25,11 +23,19 @@ def nln(x):
     #return jax.nn.sigmoid(4*(x-0.5))
     #return jnp.maximum(0, x**3/(x**3+0.5**3))
     # return jax.nn.softplus(x - 4.0)
+    # Hill function: defined on x >= 0 (firing rates are non-negative). Rectify
+    # first — a fractional power of a negative input is NaN, which otherwise
+    # poisons the whole forward/backward pass.
+    #x = jnp.maximum(0.0, x)
+    #return x**jnp.exp(1) / (x**jnp.exp(1) + 0.05)
 
 
-def bg_nln(x):
-    #return jax.nn.sigmoid(4*(x-0.5))
-    return jnp.maximum(0, jax.nn.tanh(x))
+def bg_nln(x, b):
+    # Same Hill form with a PKA-shifted half-max; rectify the input (see nln).
+    # x = jnp.maximum(0.0, x)
+    #return x**jnp.exp(1) / (x**jnp.exp(1) + (1-b))
+    c = b/(1-b)
+    return jax.nn.tanh(c*x)
 
 
 def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=False):
@@ -451,6 +457,8 @@ def reinforce_loss(
     pathway_floor_min=1.0,
     c_snc_floor_coef=0.0,
     c_snc_floor_min=0.0,
+    gpe_floor_coef=0.0,
+    gpe_floor_min=0.0,
 ):
     """
     Direct objective options for STMT optimization.
@@ -489,7 +497,11 @@ def reinforce_loss(
 
     ``rng_keys`` are kept for API compatibility.
     """
-    ys, pkad1_traj, pkad2_traj = rnn_func(params, config, batch_inputs, None, rng_keys)
+    _rnn_out = rnn_func(params, config, batch_inputs, None, rng_keys)
+    ys, pkad1_traj, pkad2_traj = _rnn_out[0], _rnn_out[1], _rnn_out[2]
+    # Optional GPe trajectory (exposed by rnn_func when available) for the GPe
+    # activity floor; None for families whose rnn_func returns only PKA traces.
+    gpe_traj = _rnn_out[3] if len(_rnn_out) > 3 else None
     probs = jnp.clip(ys[..., 0], 1e-6, 1.0 - 1e-6)  # (batch, T)
     batch_size, T = probs.shape
     eps = 1e-7
@@ -640,9 +652,19 @@ def reinforce_loss(
     else:
         c_snc_floor_loss = jnp.array(0.0, dtype=probs.dtype)
 
+    # GPe activity floor: GPe is tonically active in vivo and should not go
+    # silent. Penalize the mean GPe activity falling below gpe_floor_min so the
+    # runaway D2->GPe inhibition can't train GPe to zero.
+    if gpe_floor_coef != 0.0 and gpe_traj is not None:
+        gpe_mean = jnp.mean(gpe_traj)
+        gpe_floor_loss = gpe_floor_coef * jnp.square(jnp.maximum(0.0, gpe_floor_min - gpe_mean))
+    else:
+        gpe_floor_loss = jnp.array(0.0, dtype=probs.dtype)
+
     total_loss = (
         pg_loss - entropy_coef * entropy + brevity_term + silence_loss + tail_loss
         + asym_loss + rest_pka_loss + pathway_floor_loss + c_snc_floor_loss
+        + gpe_floor_loss
     )
     aux = {
         "success_rate": mean_p_reward,
@@ -658,6 +680,7 @@ def reinforce_loss(
         "rest_pka_loss": rest_pka_loss,
         "pathway_floor_loss": pathway_floor_loss,
         "c_snc_floor_loss": c_snc_floor_loss,
+        "gpe_floor_loss": gpe_floor_loss,
     }
     return total_loss, aux
 
@@ -687,6 +710,8 @@ def fit_rnn_reinforce(
     pathway_floor_min=1.0,
     c_snc_floor_coef=0.0,
     c_snc_floor_min=0.0,
+    gpe_floor_coef=0.0,
+    gpe_floor_min=0.0,
 ):
     """
     Train an RNN policy with REINFORCE on the binary STMT objective.
@@ -730,6 +755,8 @@ def fit_rnn_reinforce(
                 pathway_floor_min,
                 c_snc_floor_coef,
                 c_snc_floor_min,
+                gpe_floor_coef,
+                gpe_floor_min,
             ),
             has_aux=True,
         )(cur_params)
@@ -753,6 +780,7 @@ def fit_rnn_reinforce(
             aux["rest_pka_loss"],
             aux["pathway_floor_loss"],
             aux["c_snc_floor_loss"],
+            aux["gpe_floor_loss"],
         )
 
     losses = []
@@ -775,6 +803,7 @@ def fit_rnn_reinforce(
             rest_pka_vals,
             pathway_floor_vals,
             c_snc_floor_vals,
+            gpe_floor_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key, baseline),
@@ -795,6 +824,7 @@ def fit_rnn_reinforce(
         last_rest_pka = float(rest_pka_vals[-1])
         last_pathway_floor = float(pathway_floor_vals[-1])
         last_c_snc_floor = float(c_snc_floor_vals[-1])
+        last_gpe_floor = float(gpe_floor_vals[-1])
 
         losses.append(last_loss)
         reward_means.append(last_reward)
@@ -806,7 +836,7 @@ def fit_rnn_reinforce(
             f"brevity: {last_brevity:.4f}, norm_resp_time: {last_norm_time:.3f}, "
             f"silence: {last_silence:.4f}, tail: {last_tail:.4f}, asym: {last_asym:.4f}, "
             f"rest_pka: {last_rest_pka:.4f}, pathway_floor: {last_pathway_floor:.4f}, "
-            f"c_snc_floor: {last_c_snc_floor:.4f}"
+            f"c_snc_floor: {last_c_snc_floor:.4f}, gpe_floor: {last_gpe_floor:.4f}"
         )
 
         if last_loss < best_loss:
@@ -833,6 +863,8 @@ def supervised_loss(
     pathway_floor_min=1.0,
     c_snc_floor_coef=0.0,
     c_snc_floor_min=0.0,
+    gpe_floor_coef=0.0,
+    gpe_floor_min=0.0,
 ):
     """Dense supervised loss: match the network output to the target trajectory.
 
@@ -855,7 +887,11 @@ def supervised_loss(
     Returns ``(total_loss, aux)`` where ``aux`` exposes the supervised loss and
     output-matching diagnostics.
     """
-    ys, pkad1_traj, pkad2_traj = rnn_func(params, config, batch_inputs, None, rng_keys)
+    _rnn_out = rnn_func(params, config, batch_inputs, None, rng_keys)
+    ys, pkad1_traj, pkad2_traj = _rnn_out[0], _rnn_out[1], _rnn_out[2]
+    # Optional GPe trajectory (exposed by rnn_func when available) for the GPe
+    # activity floor; None for families whose rnn_func returns only PKA traces.
+    gpe_traj = _rnn_out[3] if len(_rnn_out) > 3 else None
     eps = 1e-7
     probs = jnp.clip(ys[..., 0], eps, 1.0 - eps)  # (batch, T)
     batch_size, T = probs.shape
@@ -933,7 +969,16 @@ def supervised_loss(
     else:
         c_snc_floor_loss = jnp.array(0.0, dtype=probs.dtype)
 
-    total_loss = sup_loss + asym_loss + rest_pka_loss + pathway_floor_loss + c_snc_floor_loss
+    # GPe activity floor (see reinforce_loss): keep GPe tonically active.
+    if gpe_floor_coef != 0.0 and gpe_traj is not None:
+        gpe_floor_loss = gpe_floor_coef * jnp.square(
+            jnp.maximum(0.0, gpe_floor_min - jnp.mean(gpe_traj))
+        )
+    else:
+        gpe_floor_loss = jnp.array(0.0, dtype=probs.dtype)
+
+    total_loss = (sup_loss + asym_loss + rest_pka_loss + pathway_floor_loss
+                  + c_snc_floor_loss + gpe_floor_loss)
     aux = {
         "sup_loss": sup_loss,
         "accuracy": accuracy,
@@ -943,6 +988,7 @@ def supervised_loss(
         "rest_pka_loss": rest_pka_loss,
         "pathway_floor_loss": pathway_floor_loss,
         "c_snc_floor_loss": c_snc_floor_loss,
+        "gpe_floor_loss": gpe_floor_loss,
     }
     return total_loss, aux
 
@@ -967,6 +1013,8 @@ def fit_rnn_supervised(
     pathway_floor_min=1.0,
     c_snc_floor_coef=0.0,
     c_snc_floor_min=0.0,
+    gpe_floor_coef=0.0,
+    gpe_floor_min=0.0,
 ):
     """Train an RNN by direct supervision against the task target trajectory.
 
@@ -1008,6 +1056,8 @@ def fit_rnn_supervised(
                 pathway_floor_min,
                 c_snc_floor_coef,
                 c_snc_floor_min,
+                gpe_floor_coef,
+                gpe_floor_min,
             ),
             has_aux=True,
         )(cur_params)
@@ -1025,6 +1075,7 @@ def fit_rnn_supervised(
             aux["rest_pka_loss"],
             aux["pathway_floor_loss"],
             aux["c_snc_floor_loss"],
+            aux["gpe_floor_loss"],
         )
 
     losses = []
@@ -1043,6 +1094,7 @@ def fit_rnn_supervised(
             rest_pka_vals,
             pathway_floor_vals,
             c_snc_floor_vals,
+            gpe_floor_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key),
@@ -1061,7 +1113,7 @@ def fit_rnn_supervised(
             f"acc: {last_acc:.4f}, in_window: {float(in_rate_vals[-1]):.4f}, "
             f"off_window: {float(off_rate_vals[-1]):.4f}, asym: {float(asym_vals[-1]):.4f}, "
             f"rest_pka: {float(rest_pka_vals[-1]):.4f}, pathway_floor: {float(pathway_floor_vals[-1]):.4f}, "
-            f"c_snc_floor: {float(c_snc_floor_vals[-1]):.4f}"
+            f"c_snc_floor: {float(c_snc_floor_vals[-1]):.4f}, gpe_floor: {float(gpe_floor_vals[-1]):.4f}"
         )
 
         if last_loss < best_loss:

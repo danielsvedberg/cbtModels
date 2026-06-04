@@ -67,7 +67,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            1000, # number of iters
+            10000, # number of iters
             batch_targets=targets,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
@@ -80,6 +80,8 @@ def main():
             pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
             c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.1),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.1),
         )
     else:
         best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -89,7 +91,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            1000,#train_cfg["num_iters"], # number of iters
+            5000,#train_cfg["num_iters"], # number of iters
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
             baseline_momentum=rl_cfg["baseline_momentum"],
@@ -97,8 +99,8 @@ def main():
             objective_mode=rl_cfg.get("objective_mode", "log_reward"),
             batch_targets=targets,
             brevity_coef=rl_cfg.get("brevity_coef", 0.1),
-            silence_coef=rl_cfg.get("silence_coef", 0.0),
-            tail_coef=rl_cfg.get("tail_coef", 0.1),
+            silence_coef=rl_cfg.get("silence_coef", 0.1),
+            tail_coef=rl_cfg.get("tail_coef", 0.5),
             # Structural penalties disabled during Pavlovian: with tanh() wrapping
             # every inter-area projection, weight-norm-based floors no longer map
             # to effective drive (saturates at ~1 regardless of norm) and only push
@@ -111,6 +113,8 @@ def main():
             pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
             c_snc_floor_coef=0.0,
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
         )
 
     out_path = cfg.pavlovian_params_path()

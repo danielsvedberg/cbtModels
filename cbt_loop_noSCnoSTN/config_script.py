@@ -26,7 +26,7 @@ RNN_CONFIG = {
     "n_output":1,
     "g_bg": 1.0,
     "g_nm": 0.5,
-    "noise_std": 0.01,
+    "noise_std": 0.05,
 }
 
 OPTIM_CONFIG = {
@@ -48,6 +48,11 @@ RL_CONFIG = {
     "pathway_floor_min": 1.5,
     "c_snc_floor_coef": 0.1,
     "c_snc_floor_min": 0.1,
+    # GPe kept alive structurally by the pacer floor (gpe_pacer_min >= 1 in
+    # cbt_rnn config), so the activity-floor penalty is disabled (coef=0). Raise
+    # gpe_floor_coef to re-enable it as a soft push above the pacer-set level.
+    "gpe_floor_coef": 0.2,
+    "gpe_floor_min": 0.1,
 }
 
 TASK_CONFIG = {
@@ -75,7 +80,7 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 10000,
+    "num_iters": 20000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
     # Training objective for train_pavlovian: "reinforce" (policy gradient) or
@@ -86,7 +91,7 @@ TRAINING_CONFIG = {
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.01,
+    "noise_std": 0.05,
     "start_t": jnp.arange(270, 330, 10),
 }
 

@@ -164,6 +164,8 @@ def main():
             pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
             c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
         )
     else:
         best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -191,6 +193,8 @@ def main():
             pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
             c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
         )
 
     out_path = cfg.shaped_params_path()
