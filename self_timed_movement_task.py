@@ -38,6 +38,66 @@ def bg_nln(x, b):
     return jax.nn.tanh(c*x)
 
 
+# Indices into the rnn_func state tuple (cbt_rnn.STATE_AREA_ORDER) excluded from
+# the dead-area inactivity floor. Indices 7, 8 are the PKA excitability traces
+# (a modulatory signal, not an area's output rate); index 9 is the Medulla,
+# excluded so the motor-output region can go quiet between responses.
+_DEAD_AREA_SKIP_INDICES = (7, 8, 9)
+
+
+def dead_area_floor_loss(all_xs, coef, floor_min, dtype):
+    """Penalize any region whose mean *late-trial* activity falls below a floor.
+
+    For each area trajectory in ``all_xs`` (the full state tuple returned by
+    rnn_func, shaped ``(batch, T, n)``), add ``max(0, floor_min - mean_activity)^2``
+    to the penalty, skipping the PKA excitability traces and the Medulla. Summing
+    the per-area hinge penalties means a single silenced region is enough to incur
+    loss, so training is pushed to keep every (non-excluded) area active.
+
+    The mean is taken over only the **second half** of each time series, so the
+    network can't cheat the floor by setting a high initial activity and then
+    decaying the region to silence — the penalty only sees steady-state activity.
+    Returns 0 when disabled or unavailable.
+    """
+    if coef == 0.0 or all_xs is None:
+        return jnp.array(0.0, dtype=dtype)
+    loss = jnp.array(0.0, dtype=dtype)
+    for i, area_traj in enumerate(all_xs):
+        if i in _DEAD_AREA_SKIP_INDICES:
+            continue
+        # area_traj: (batch, T, n) — average only the late (second-half) window.
+        half = area_traj.shape[1] // 2
+        area_mean = jnp.mean(area_traj[:, half:, :])
+        loss = loss + jnp.square(jnp.maximum(0.0, floor_min - area_mean))
+    return coef * loss
+
+
+def dead_projection_loss(params, coef, floor, dtype):
+    """Penalize synaptic projections that collapse toward zero.
+
+    Every 2-D weight matrix in ``params`` is a synaptic projection (within- and
+    between-area connectivity, plus the cue-input and readout matrices); 1-D
+    gains/pacemakers/initial-states and scalars are skipped. A projection counts
+    as *dead* when its mean absolute weight falls below ``floor / n_connections``
+    (n_connections = number of entries) — equivalently when its total absolute
+    weight ``sum|W|`` drops below ``floor``. For each projection we add
+    ``max(0, floor - sum|W|)^2``: penalizing the L1 deficit (not the mean) keeps
+    the same dead/alive boundary the caller asked for while giving the gradient a
+    usable scale, so a collapsing projection is actively pushed back to life.
+    Returns 0 when disabled.
+    """
+    if coef == 0.0:
+        return jnp.array(0.0, dtype=dtype)
+    loss = jnp.array(0.0, dtype=dtype)
+    for w in params.values():
+        w = jnp.asarray(w)
+        if w.ndim != 2:
+            continue
+        l1 = jnp.sum(jnp.abs(w))  # = mean|W| * n_connections
+        loss = loss + jnp.square(jnp.maximum(0.0, floor - l1))
+    return coef * loss
+
+
 def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=False):
     """
     Simulate all possible input/output pairs for the self-timed movement task.
@@ -459,6 +519,10 @@ def reinforce_loss(
     c_snc_floor_min=0.0,
     gpe_floor_coef=0.0,
     gpe_floor_min=0.0,
+    dead_area_coef=0.0,
+    dead_area_min=0.0,
+    dead_proj_coef=0.0,
+    dead_proj_floor=0.1,
 ):
     """
     Direct objective options for STMT optimization.
@@ -502,6 +566,9 @@ def reinforce_loss(
     # Optional GPe trajectory (exposed by rnn_func when available) for the GPe
     # activity floor; None for families whose rnn_func returns only PKA traces.
     gpe_traj = _rnn_out[3] if len(_rnn_out) > 3 else None
+    # Optional full state tuple (exposed last by rnn_func) for the dead-area
+    # inactivity floor; None for families whose rnn_func returns only PKA/GPe.
+    all_xs = _rnn_out[4] if len(_rnn_out) > 4 else None
     probs = jnp.clip(ys[..., 0], 1e-6, 1.0 - 1e-6)  # (batch, T)
     batch_size, T = probs.shape
     eps = 1e-7
@@ -661,10 +728,18 @@ def reinforce_loss(
     else:
         gpe_floor_loss = jnp.array(0.0, dtype=probs.dtype)
 
+    # Dead-area inactivity floor: require every region to stay active over the
+    # latter half of each trial (see dead_area_floor_loss).
+    dead_area_loss = dead_area_floor_loss(all_xs, dead_area_coef, dead_area_min, probs.dtype)
+
+    # Dead-projection floor: keep every synaptic projection from collapsing to
+    # zero (mean |weight| < dead_proj_floor / n_connections).
+    dead_proj_loss = dead_projection_loss(params, dead_proj_coef, dead_proj_floor, probs.dtype)
+
     total_loss = (
         pg_loss - entropy_coef * entropy + brevity_term + silence_loss + tail_loss
         + asym_loss + rest_pka_loss + pathway_floor_loss + c_snc_floor_loss
-        + gpe_floor_loss
+        + gpe_floor_loss + dead_area_loss + dead_proj_loss
     )
     aux = {
         "success_rate": mean_p_reward,
@@ -681,6 +756,8 @@ def reinforce_loss(
         "pathway_floor_loss": pathway_floor_loss,
         "c_snc_floor_loss": c_snc_floor_loss,
         "gpe_floor_loss": gpe_floor_loss,
+        "dead_area_loss": dead_area_loss,
+        "dead_proj_loss": dead_proj_loss,
     }
     return total_loss, aux
 
@@ -712,6 +789,10 @@ def fit_rnn_reinforce(
     c_snc_floor_min=0.0,
     gpe_floor_coef=0.0,
     gpe_floor_min=0.0,
+    dead_area_coef=0.0,
+    dead_area_min=0.0,
+    dead_proj_coef=0.0,
+    dead_proj_floor=0.1,
 ):
     """
     Train an RNN policy with REINFORCE on the binary STMT objective.
@@ -757,6 +838,10 @@ def fit_rnn_reinforce(
                 c_snc_floor_min,
                 gpe_floor_coef,
                 gpe_floor_min,
+                dead_area_coef,
+                dead_area_min,
+                dead_proj_coef,
+                dead_proj_floor,
             ),
             has_aux=True,
         )(cur_params)
@@ -781,6 +866,8 @@ def fit_rnn_reinforce(
             aux["pathway_floor_loss"],
             aux["c_snc_floor_loss"],
             aux["gpe_floor_loss"],
+            aux["dead_area_loss"],
+            aux["dead_proj_loss"],
         )
 
     losses = []
@@ -804,6 +891,8 @@ def fit_rnn_reinforce(
             pathway_floor_vals,
             c_snc_floor_vals,
             gpe_floor_vals,
+            dead_area_vals,
+            dead_proj_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key, baseline),
@@ -825,6 +914,8 @@ def fit_rnn_reinforce(
         last_pathway_floor = float(pathway_floor_vals[-1])
         last_c_snc_floor = float(c_snc_floor_vals[-1])
         last_gpe_floor = float(gpe_floor_vals[-1])
+        last_dead_area = float(dead_area_vals[-1])
+        last_dead_proj = float(dead_proj_vals[-1])
 
         losses.append(last_loss)
         reward_means.append(last_reward)
@@ -836,7 +927,8 @@ def fit_rnn_reinforce(
             f"brevity: {last_brevity:.4f}, norm_resp_time: {last_norm_time:.3f}, "
             f"silence: {last_silence:.4f}, tail: {last_tail:.4f}, asym: {last_asym:.4f}, "
             f"rest_pka: {last_rest_pka:.4f}, pathway_floor: {last_pathway_floor:.4f}, "
-            f"c_snc_floor: {last_c_snc_floor:.4f}, gpe_floor: {last_gpe_floor:.4f}"
+            f"c_snc_floor: {last_c_snc_floor:.4f}, gpe_floor: {last_gpe_floor:.4f}, "
+            f"dead_area: {last_dead_area:.4f}, dead_proj: {last_dead_proj:.4f}"
         )
 
         if last_loss < best_loss:
@@ -865,6 +957,10 @@ def supervised_loss(
     c_snc_floor_min=0.0,
     gpe_floor_coef=0.0,
     gpe_floor_min=0.0,
+    dead_area_coef=0.0,
+    dead_area_min=0.0,
+    dead_proj_coef=0.0,
+    dead_proj_floor=0.1,
 ):
     """Dense supervised loss: match the network output to the target trajectory.
 
@@ -892,6 +988,8 @@ def supervised_loss(
     # Optional GPe trajectory (exposed by rnn_func when available) for the GPe
     # activity floor; None for families whose rnn_func returns only PKA traces.
     gpe_traj = _rnn_out[3] if len(_rnn_out) > 3 else None
+    # Optional full state tuple (exposed last) for the dead-area inactivity floor.
+    all_xs = _rnn_out[4] if len(_rnn_out) > 4 else None
     eps = 1e-7
     probs = jnp.clip(ys[..., 0], eps, 1.0 - eps)  # (batch, T)
     batch_size, T = probs.shape
@@ -977,8 +1075,16 @@ def supervised_loss(
     else:
         gpe_floor_loss = jnp.array(0.0, dtype=probs.dtype)
 
+    # Dead-area inactivity floor (see reinforce_loss): keep every region active
+    # over the latter half of each trial.
+    dead_area_loss = dead_area_floor_loss(all_xs, dead_area_coef, dead_area_min, probs.dtype)
+
+    # Dead-projection floor (see reinforce_loss): keep every synaptic projection
+    # from collapsing toward zero.
+    dead_proj_loss = dead_projection_loss(params, dead_proj_coef, dead_proj_floor, probs.dtype)
+
     total_loss = (sup_loss + asym_loss + rest_pka_loss + pathway_floor_loss
-                  + c_snc_floor_loss + gpe_floor_loss)
+                  + c_snc_floor_loss + gpe_floor_loss + dead_area_loss + dead_proj_loss)
     aux = {
         "sup_loss": sup_loss,
         "accuracy": accuracy,
@@ -989,6 +1095,8 @@ def supervised_loss(
         "pathway_floor_loss": pathway_floor_loss,
         "c_snc_floor_loss": c_snc_floor_loss,
         "gpe_floor_loss": gpe_floor_loss,
+        "dead_area_loss": dead_area_loss,
+        "dead_proj_loss": dead_proj_loss,
     }
     return total_loss, aux
 
@@ -1015,6 +1123,10 @@ def fit_rnn_supervised(
     c_snc_floor_min=0.0,
     gpe_floor_coef=0.0,
     gpe_floor_min=0.0,
+    dead_area_coef=0.0,
+    dead_area_min=0.0,
+    dead_proj_coef=0.0,
+    dead_proj_floor=0.1,
 ):
     """Train an RNN by direct supervision against the task target trajectory.
 
@@ -1058,6 +1170,10 @@ def fit_rnn_supervised(
                 c_snc_floor_min,
                 gpe_floor_coef,
                 gpe_floor_min,
+                dead_area_coef,
+                dead_area_min,
+                dead_proj_coef,
+                dead_proj_floor,
             ),
             has_aux=True,
         )(cur_params)
@@ -1076,6 +1192,8 @@ def fit_rnn_supervised(
             aux["pathway_floor_loss"],
             aux["c_snc_floor_loss"],
             aux["gpe_floor_loss"],
+            aux["dead_area_loss"],
+            aux["dead_proj_loss"],
         )
 
     losses = []
@@ -1095,6 +1213,8 @@ def fit_rnn_supervised(
             pathway_floor_vals,
             c_snc_floor_vals,
             gpe_floor_vals,
+            dead_area_vals,
+            dead_proj_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key),
@@ -1113,7 +1233,8 @@ def fit_rnn_supervised(
             f"acc: {last_acc:.4f}, in_window: {float(in_rate_vals[-1]):.4f}, "
             f"off_window: {float(off_rate_vals[-1]):.4f}, asym: {float(asym_vals[-1]):.4f}, "
             f"rest_pka: {float(rest_pka_vals[-1]):.4f}, pathway_floor: {float(pathway_floor_vals[-1]):.4f}, "
-            f"c_snc_floor: {float(c_snc_floor_vals[-1]):.4f}, gpe_floor: {float(gpe_floor_vals[-1]):.4f}"
+            f"c_snc_floor: {float(c_snc_floor_vals[-1]):.4f}, gpe_floor: {float(gpe_floor_vals[-1]):.4f}, "
+            f"dead_area: {float(dead_area_vals[-1]):.4f}, dead_proj: {float(dead_proj_vals[-1]):.4f}"
         )
 
         if last_loss < best_loss:

@@ -74,15 +74,19 @@ def main():
             seed=train_cfg["seed"],
             loss_type=train_cfg.get("loss_type", "bce"),
             asym_coef=rl_cfg.get("asym_coef", 0.0),
-            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            asym_margin=rl_cfg.get("asym_margin", 0.0),
             rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            rest_pka_margin=rl_cfg.get("rest_pka_margin", 0.0),
             pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
-            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            pathway_floor_min=rl_cfg.get("pathway_floor_min", 0.0),
             c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
-            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.1),
-            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.1),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
+            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
+            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
+            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
+            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.0),
         )
     else:
         best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -101,21 +105,25 @@ def main():
             batch_targets=targets,
             brevity_coef=rl_cfg.get("brevity_coef", 0.1),
             silence_coef=rl_cfg.get("silence_coef", 0.1),
-            tail_coef=rl_cfg.get("tail_coef", 0.5),
+            tail_coef=rl_cfg.get("tail_coef", 1.0),
             # Structural penalties disabled during Pavlovian: with tanh() wrapping
             # every inter-area projection, weight-norm-based floors no longer map
             # to effective drive (saturates at ~1 regardless of norm) and only push
             # weights into the dead-gradient zone. Re-enabled in train_from_pavlovian.
             asym_coef=0.0,
-            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            asym_margin=rl_cfg.get("asym_margin", 0.0),
             rest_pka_coef=0.0,
-            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            rest_pka_margin=rl_cfg.get("rest_pka_margin", 0.0),
             pathway_floor_coef=0.0,
-            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            pathway_floor_min=rl_cfg.get("pathway_floor_min", 0.0),
             c_snc_floor_coef=0.0,
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
             gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
             gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
+            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
+            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
+            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.1),
+            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.01),
         )
 
     out_path = cfg.pavlovian_params_path()
