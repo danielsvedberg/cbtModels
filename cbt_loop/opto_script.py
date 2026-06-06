@@ -84,7 +84,7 @@ def _base_inputs():
 
 
 def run_opto_demo(params, config, n_seeds=200,
-                  inh_d1=-1.2, inh_d2=-0.6, stim_d1=1.2, stim_d2=0.6):
+                  inh_d1=-1.0, inh_d2=-1.0, stim_d1=1.0, stim_d2=1.0):
     """Control + representative inh/stim of dSPN and iSPN for the demo plots.
 
     Returns (opto_ys, opto_xs) as 5-element lists ordered:

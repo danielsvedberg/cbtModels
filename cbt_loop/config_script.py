@@ -105,8 +105,8 @@ z0 = None
 # Optogenetic stimulation defaults retained for existing scripts.
 n_opto_seeds = 1000
 opto_tstart = 250
-opto_start = opto_tstart + 100
-opto_end = opto_start + 175
+opto_start = opto_tstart #+ 100
+opto_end = opto_start + 300#+ 175
 
 d1_stim_strength = jnp.arange(0.0, 1.0, 0.2)
 d2_stim_strength = jnp.arange(0.0, 1.0, 0.2)
