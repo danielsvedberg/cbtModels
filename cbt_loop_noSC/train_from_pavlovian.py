@@ -161,6 +161,12 @@ def main():
             pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
             c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
+            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
+            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
+            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
+            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.1),
         )
     else:
         best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -188,6 +194,12 @@ def main():
             pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
             c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
+            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
+            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
+            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
+            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
+            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
+            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.1),
         )
 
     out_path = cfg.shaped_params_path()

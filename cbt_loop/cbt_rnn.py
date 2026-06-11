@@ -27,8 +27,8 @@ def nln(x):
 
 
 def bg_nln(x, b):
-    #return stmt.bg_nln(x)
-    return sigmoid(4*(x-1+b))
+    return stmt.bg_nln(x, b)
+    #return sigmoid(4*(x-1+b))
     #return jnp.maximum(0, tanh(b*2*x))
 
 
@@ -60,7 +60,7 @@ def init_params(
     rng_key,
     n_c_U=5,
     n_c_L=4,
-    n_c_inh=3,
+    n_c_inh=4,
     n_d1=6,
     n_d2=6,
     n_snc=4,
@@ -75,7 +75,7 @@ def init_params(
     n_output=1,
     g_bg=0.5,
     g_nm=0.5,
-    noise_std=0.01,
+    noise_std=0.05,
 ):
     """Initialize multiregion CBT loop params and runtime config.
 
@@ -171,8 +171,15 @@ def init_params(
         "J_med_w2": (g_bg / math.sqrt(2)) * jr.normal(skeys[21], (2, 2)),  # within pair 2
         "J_med_x":  (g_bg / math.sqrt(2)) * jr.normal(skeys[30], (2, 2)),  # cross-pair
         "B_cL_med": (1 / math.sqrt(n_c_L)) * jr.normal(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E units only
+        "B_snr_med": (1 / math.sqrt(n_snr)) * jr.normal(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E units (inh)
         "C_med": (1 / math.sqrt(n_med)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
         #"rb": jnp.abs((1 / math.sqrt(n_med)) * jr.normal(skeys[16], (n_output,))),
+        # Output readout gain/bias: y = sigmoid(out_gain * (c_med @ x_med_E) + out_bias).
+        # out_bias = logit(0.25) gives a nonzero resting response prob (~0.25) so the
+        # policy can explore from the start (instead of being floored at 0 by nln);
+        # out_gain sets the readout's dynamic range. Both are trainable.
+        "out_gain": jnp.array(4.0),
+        "out_bias": jnp.array(-1.0986123),  # logit(0.25)
         # Trainable initial states (resting/baseline activity for each area).
         "x_c0_U": jnp.ones((n_c_U,)) * 0.1,
         "x_c0_L": jnp.ones((n_c_L,)) * 0.1,
@@ -223,22 +230,29 @@ def init_params(
         "tau_pka_rise": 10.0,
         # PKA gain bounds. m_floor keeps the DA / adenosine per-SPN weights
         # (m_d1, m_d2, m_a1, m_a2) ≥ m_floor; k_a stays in [k_a_floor, k_a_cap].
-        "m_floor": 0.1,
+        "m_floor": 0.01,
+        # Minimum magnitude of each SNr → medulla (E unit) inhibitory weight, so
+        # the tonic SNr gate on motor output can't be trained away to zero.
+        "snr_med_floor": 0.1,
         # A1R→D1 PKA floor dropped to 0: the shared m_floor forced tonic A1R
         # inhibition above the (structurally weak) DA drive, pinning pka_d1 dead.
         # m_floor_a2 stays at m_floor so the A2R drive keeps pka_d2 alive.
-        "m_floor_a1": 0.0,
+        "m_floor_a1": 0.1,
         "m_floor_a2": 0.1,
         # Gain on the DA→PKA drive so phasic DA can actually move pka_d1 (and
         # modulate pka_d2) given the small mean_snc.
-        "da_pka_gain": 4.0,
+        "da_pka_gain": 1.0,
         "k_a_floor": 0.05,
         "k_a_cap": 1.0,
         "snc_pacer_min": 0.05,
         "snc_pacer_max": 0.15,
-        "snr_pacer_max": 0.7,
-        "snr_pacer_min": 0.1,
-        "gpe_pacer_max": 0.6,
+        "snr_pacer_max": 0.85,
+        "snr_pacer_min": 0.5,
+        # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
+        # (caps at -1), so the tonic pacer floor must exceed ~1 to keep GPe from
+        # being silenced; gpe_pacer stays in [gpe_pacer_min, gpe_pacer_max] >= 1.
+        "gpe_pacer_min": 0.45,
+        "gpe_pacer_max": 0.8,
         "stn_pacer_max": 0.3,
         "noise_std": noise_std,
     }
@@ -271,13 +285,13 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_c0_inh = _x0("x_c0_inh", jnp.ones(n_c_inh_) * 0.2)
     x_d10    = _x0("x_d10",    jnp.ones(n_d1_)    * 0.2)
     x_d20    = _x0("x_d20",    jnp.ones(n_d2_)    * 0.2)
-    x_snc0   = _x0("x_snc0",   jnp.ones(n_snc_)   * 0.2)
-    x_gpe0   = _x0("x_gpe0",   jnp.ones(n_gpe_)   * 0.2)
+    x_snc0   = _x0("x_snc0",   jnp.ones(n_snc_)   * 0.5)
+    x_gpe0   = _x0("x_gpe0",   jnp.ones(n_gpe_)   * 0.5)
     x_stn0   = _x0("x_stn0",   jnp.ones(n_stn_)   * 0.1)
     x_sc0    = _x0("x_sc0",    jnp.ones(n_sc_)    * 0.1)
-    x_snr0   = _x0("x_snr0",   jnp.ones(n_snr_)   * 0.3)
-    x_t0_exc = _x0("x_t0_exc", jnp.ones(n_t_exc_) * 0.4)
-    x_t0_inh = _x0("x_t0_inh", jnp.ones(n_t_inh_) * 0.4)
+    x_snr0   = _x0("x_snr0",   jnp.ones(n_snr_)   * 0.4)
+    x_t0_exc = _x0("x_t0_exc", jnp.ones(n_t_exc_) * 0.5)
+    x_t0_inh = _x0("x_t0_inh", jnp.ones(n_t_inh_) * 0.5)
     x_med0   = _x0("x_med0",   jnp.ones(n_med_)   * 0.2)
     pka_d10  = _x0("pka_d10",  jnp.ones(n_d1_)    * 0.2)
     pka_d20  = _x0("pka_d20",  jnp.ones(n_d2_)    * 0.2)
@@ -338,25 +352,25 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_cU_t_exc = exc(params["B_cU_t_exc"])
     b_cU_t_inh = exc(params["B_cU_t_inh"])
     # cU → striatum / GPe / SC; cL → SNc; both → STN (hyperdirect).
-    b_cU_d1 = exc(params["B_cU_d1"])
-    b_cU_d2 = exc(params["B_cU_d2"])
-    b_cU_gpe = exc(params["B_cU_gpe"])
-    b_cL_snc = exc(params["B_cL_snc"])
+    b_cU_d1 = exc(params["B_cU_d1"])+(0.1/n_c_U_)
+    b_cU_d2 = exc(params["B_cU_d2"])+(0.1/n_c_U_)
+    b_cU_gpe = exc(params["B_cU_gpe"])+(0.1/n_c_U_)
+    b_cL_snc = exc(params["B_cL_snc"])+(0.1/n_c_L_)
     b_cU_stn = exc(params["B_cU_stn"])  # hyperdirect (cU)
     b_cL_stn = exc(params["B_cL_stn"])  # hyperdirect (cL)
     b_cU_sc = exc(params["B_cU_sc"])    # cU → SC (cU only)
     b_d1_snc = inh(params["B_d1_snc"])
     b_d2_snc = inh(params["B_d2_snc"])
-    b_d1_snr = inh(params["B_d1_snr"])
-    b_d2_gpe = inh(params["B_d2_gpe"])
-    b_gpe_snr = inh(params["B_gpe_snr"])
+    b_d1_snr = inh(params["B_d1_snr"])-(0.1/n_d1_)
+    b_d2_gpe = inh(params["B_d2_gpe"])-(0.1/n_d2_)
+    b_gpe_snr = inh(params["B_gpe_snr"])-(0.1/n_gpe_)
     b_gpe_snc = inh(params["B_gpe_snc"])
     b_gpe_stn = inh(params["B_gpe_stn"])
     b_stn_gpe = exc(params["B_stn_gpe"])
     b_stn_snr = exc(params["B_stn_snr"])
     b_stn_snc = exc(params["B_stn_snc"])
     # SNr → thalamus (both pools).
-    b_snr_t_exc = inh(params["B_snr_t_exc"])
+    b_snr_t_exc = inh(params["B_snr_t_exc"])-(0.1/n_snr_)
     b_snr_t_inh = inh(params["B_snr_t_inh"])
     # Superior colliculus: exc from cortex, inh from SNr, exc to thalamus and medulla.
     b_snr_sc = inh(params["B_snr_sc"])
@@ -402,7 +416,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         jnp.stack([j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]]),   # I1
     ])
     b_cL_med = exc(params["B_cL_med"])  # shape (n_med//2, n_c_L): cL → medulla E units
-    c_med = sigmoid(params["C_med"])  # shape (n_output, 2): reads from E units only
+    # SNr → Medulla E units: inhibitory with a minimum magnitude (floored exc,
+    # negated) so each weight stays ≤ -snr_med_floor and the tonic gate persists.
+    snr_med_floor = config.get("snr_med_floor", 0.01)
+    b_snr_med = -(exc(params["B_snr_med"]) + snr_med_floor)  # shape (n_med//2, n_snr)
+    c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
+    # Readout gain/bias (fall back to constants for legacy bundles without them).
+    out_gain = jnp.asarray(params["out_gain"]) if "out_gain" in params else jnp.asarray(config.get("out_gain", 4.0))
+    out_bias = jnp.asarray(params["out_bias"]) if "out_bias" in params else jnp.asarray(config.get("out_bias", -1.0986123))
     #rb = params["rb"]
 
 
@@ -435,11 +456,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     snr_pacer_max = config.get("snr_pacer_max", 0.8)
     snr_pacer_min = config.get("snr_pacer_min", 0.4)
     gpe_pacer_max = config.get("gpe_pacer_max", 0.8)
+    gpe_pacer_min = config.get("gpe_pacer_min", 0.4)
     stn_pacer_max = config.get("stn_pacer_max", 0.2)
 
     snc_pacer = snc_pacer_min + sigmoid(p_snc) * (snc_pacer_max - snc_pacer_min)
     snr_pacer = snr_pacer_min + sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
-    gpe_pacer = sigmoid(p_gpe) * gpe_pacer_max
+    gpe_pacer = gpe_pacer_min + sigmoid(p_gpe) * (gpe_pacer_max - gpe_pacer_min)
     stn_pacer = stn_pacer_max * jnp.ones(j_stn.shape[0])
 
     tau_med = config.get("tau_med", 5.0)
@@ -588,9 +610,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_sc = x_sc + (1.0 / tau_sc) * tanh(b_snr_sc @ x_snr)
         x_sc = nln(x_sc)
 
-        # medulla: two E/I pairs with reciprocal coupling; cortical + SC drive to E units only
+        # medulla: two E/I pairs with reciprocal coupling; cortical (exc), SC (exc)
+        # and inhibitory SNr drive all target the E units only
         x_med = (1.0 - (1.0 / tau_med)) * x_med
         x_med = x_med + (1.0 / tau_med) * tanh(j_med @ x_med)
+        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_snr_med @ x_snr))  # SNr → Medulla E units only
         x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_cL_med @ x_c_L))
         x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_sc_med @ x_sc))
         x_med = nln(x_med)
@@ -635,8 +659,12 @@ def rnn_func(params, config, batch_inputs, opto_stim, rng_keys):
     else:
         batch_stim = opto_stim
     ys, xs = batched_rnn(params, config, batch_inputs, batch_stim, rng_keys)
-    # State tuple ends with (..., pkad1, pkad2, xmed); expose PKA traces for loss shaping.
-    return ys, xs[-3], xs[-2]
+    # State tuple ends with (..., pkad1, pkad2, xmed); expose PKA traces plus the
+    # GPe trajectory for loss shaping (PKA asymmetry + GPe activity floor). The
+    # full state tuple ``xs`` is returned last so the loss can enforce an
+    # activity floor on *every* area (dead-area / inactivity penalty), not just GPe.
+    gpe = xs[STATE_AREA_ORDER.index("GPe")]
+    return ys, xs[-3], xs[-2], gpe, xs
 
 
 def evaluate(params, config, all_inputs, noise_std=None, n_seeds=8):

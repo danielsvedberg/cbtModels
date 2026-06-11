@@ -87,6 +87,10 @@ def main():
         brevity_coef=rl_cfg.get("brevity_coef", 0.0),
         silence_coef=rl_cfg.get("silence_coef", 0.0),
         tail_coef=rl_cfg.get("tail_coef", 0.0),
+        dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
+        dead_area_min=rl_cfg.get("dead_area_min", 0.0),
+        dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
+        dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.1),
     )
 
     with params_path.open("wb") as f:
