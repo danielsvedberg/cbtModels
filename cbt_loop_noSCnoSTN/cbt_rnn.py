@@ -153,12 +153,6 @@ def init_params(
         "B_snr_med": (1 / math.sqrt(n_snr)) * jr.normal(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E units (inh)
         "C_med": (1 / math.sqrt(n_med)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
         #"rb": jnp.abs((1 / math.sqrt(n_med)) * jr.normal(skeys[16], (n_output,))),
-        # Output readout gain/bias: y = sigmoid(out_gain * (c_med @ x_med_E) + out_bias).
-        # out_bias = logit(0.25) gives a nonzero resting response prob (~0.25) so the
-        # policy can explore from the start (instead of being floored at 0 by nln);
-        # out_gain sets the readout's dynamic range. Both are trainable.
-        "out_gain": jnp.array(4.0),
-        "out_bias": jnp.array(-1.0986123),  # logit(0.25)
         # Trainable initial states (resting/baseline activity for each area).
         "x_c0_U": jnp.ones((n_c_U,)) * 0.1,
         "x_c0_L": jnp.ones((n_c_L,)) * 0.1,
@@ -222,11 +216,11 @@ def init_params(
         "snc_pacer_min": 0.05,
         "snc_pacer_max": 0.15,
         "snr_pacer_max": 0.85,
-        "snr_pacer_min": 0.5,
+        "snr_pacer_min": 0.2,
         # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
         # (caps at -1), so the tonic pacer floor must exceed ~1 to keep GPe from
         # being silenced; gpe_pacer stays in [gpe_pacer_min, gpe_pacer_max] >= 1.
-        "gpe_pacer_min": 0.45,
+        "gpe_pacer_min": 0.2,
         "gpe_pacer_max": 0.8,
         "noise_std": noise_std,
     }
@@ -257,11 +251,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_c0_inh = _x0("x_c0_inh", jnp.ones(n_c_inh_) * 0.2)
     x_d10    = _x0("x_d10",    jnp.ones(n_d1_)    * 0.2)
     x_d20    = _x0("x_d20",    jnp.ones(n_d2_)    * 0.2)
-    x_snc0   = _x0("x_snc0",   jnp.ones(n_snc_)   * 0.5)
-    x_gpe0   = _x0("x_gpe0",   jnp.ones(n_gpe_)   * 0.5)
+    x_snc0   = _x0("x_snc0",   jnp.ones(n_snc_)   * 0.2)
+    x_gpe0   = _x0("x_gpe0",   jnp.ones(n_gpe_)   * 0.2)
     x_snr0   = _x0("x_snr0",   jnp.ones(n_snr_)   * 0.4)
-    x_t0_exc = _x0("x_t0_exc", jnp.ones(n_t_exc_) * 0.5)
-    x_t0_inh = _x0("x_t0_inh", jnp.ones(n_t_inh_) * 0.5)
+    x_t0_exc = _x0("x_t0_exc", jnp.ones(n_t_exc_) * 0.3)
+    x_t0_inh = _x0("x_t0_inh", jnp.ones(n_t_inh_) * 0.3)
     x_med0   = _x0("x_med0",   jnp.ones(n_med_)   * 0.2)
     pka_d10  = _x0("pka_d10",  jnp.ones(n_d1_)    * 0.2)
     pka_d20  = _x0("pka_d20",  jnp.ones(n_d2_)    * 0.2)
@@ -319,35 +313,35 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_cU_t_exc = exc(params["B_cU_t_exc"])
     b_cU_t_inh = exc(params["B_cU_t_inh"])
     # cU → basal ganglia (striatum + GPe); cL → SNc / medulla (below).
-    b_cU_d1 = exc(params["B_cU_d1"])+(0.1/n_c_U_)
-    b_cU_d2 = exc(params["B_cU_d2"])+(0.1/n_c_U_)
-    b_cU_gpe = exc(params["B_cU_gpe"])+(0.1/n_c_U_)
-    b_cL_snc = exc(params["B_cL_snc"])+(0.1/n_c_L_)
+    b_cU_d1 = exc(params["B_cU_d1"])#+(0.1/n_c_U_)
+    b_cU_d2 = exc(params["B_cU_d2"])#+(0.1/n_c_U_)
+    b_cU_gpe = exc(params["B_cU_gpe"])#+(0.1/n_c_U_)
+    b_cL_snc = exc(params["B_cL_snc"])#+(0.1/n_c_L_)
     b_d1_snc = inh(params["B_d1_snc"])
     b_d2_snc = inh(params["B_d2_snc"])
-    b_d1_snr = inh(params["B_d1_snr"])-(0.1/n_d1_)
-    b_d2_gpe = inh(params["B_d2_gpe"])-(0.1/n_d2_)
-    b_gpe_snr = inh(params["B_gpe_snr"])-(0.1/n_gpe_)
+    b_d1_snr = inh(params["B_d1_snr"])#-(0.1/n_d1_)
+    b_d2_gpe = inh(params["B_d2_gpe"])#-(0.1/n_d2_)
+    b_gpe_snr = inh(params["B_gpe_snr"])#-(0.1/n_gpe_)
     b_gpe_snc = inh(params["B_gpe_snc"])
     # SNr → thalamus (both pools).
-    b_snr_t_exc = inh(params["B_snr_t_exc"])-(0.1/n_snr_)
+    b_snr_t_exc = inh(params["B_snr_t_exc"])#-(0.1/n_snr_)
     b_snr_t_inh = inh(params["B_snr_t_inh"])
     # Dopamine / adenosine→PKA gains. Floored exc keeps the per-SPN weights
     # ≥ m_floor with a live gradient (no dead zone) for both DA and tonic
     # adenosine drives; k_a is the (currently scalar) adenosine level shared
     # by all SPNs.
-    m_floor = config.get("m_floor", 0.1)
+    #m_floor = config.get("m_floor", 0.1)
     # Adenosine weights get their own floor so the tonic A1R/A2R drive can be
     # decoupled from the DA floor. The DA→D1 PKA term is structurally weak
     # (mean_snc is small), so a high shared floor pins A1R inhibition above it
     # and kills pka_d1. m_floor_a1 lets the A1R floor drop (revive D1) while
     # m_floor_a2 preserves the A2R drive that keeps pka_d2 alive.
-    m_floor_a1 = config.get("m_floor_a1", m_floor)
-    m_floor_a2 = config.get("m_floor_a2", m_floor)
-    m_d1 = exc(params["m_d1"]) + m_floor
-    m_d2 = exc(params["m_d2"]) + m_floor
-    m_a1 = exc(params["m_a1"]) + m_floor_a1
-    m_a2 = exc(params["m_a2"]) + m_floor_a2
+    #m_floor_a1 = config.get("m_floor_a1", m_floor)
+    #m_floor_a2 = config.get("m_floor_a2", m_floor)
+    m_d1 = exc(params["m_d1"])# + m_floor
+    m_d2 = exc(params["m_d2"]) #+ m_floor
+    m_a1 = exc(params["m_a1"]) #+ m_floor_a1
+    m_a2 = exc(params["m_a2"]) #+ m_floor_a2
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
     # b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition
@@ -373,12 +367,10 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_cL_med = exc(params["B_cL_med"])  # shape (n_med//2, n_c_L): cL → medulla E units only
     # SNr → Medulla E units: inhibitory with a minimum magnitude (floored exc,
     # negated) so each weight stays ≤ -snr_med_floor and the tonic gate persists.
-    snr_med_floor = config.get("snr_med_floor", 0.01)
-    b_snr_med = -(exc(params["B_snr_med"]) + snr_med_floor)  # shape (n_med//2, n_snr)
+    #snr_med_floor = config.get("snr_med_floor", 0.01)
+    b_snr_med = -inh(params["B_snr_med"])# + snr_med_floor)  # shape (n_med//2, n_snr)
     c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
     # Readout gain/bias (fall back to constants for legacy bundles without them).
-    out_gain = jnp.asarray(params["out_gain"]) if "out_gain" in params else jnp.asarray(config.get("out_gain", 4.0))
-    out_bias = jnp.asarray(params["out_bias"]) if "out_bias" in params else jnp.asarray(config.get("out_bias", -1.0986123))
     #rb = params["rb"]
 
 
@@ -406,11 +398,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     k_a = k_a_floor + exc(jnp.asarray(params["k_a"])) * (k_a_cap - k_a_floor)
 
     snc_pacer_max = config.get("snc_pacer_max", 0.4)
-    snc_pacer_min = config.get("snc_pacer_min", 0.15)
+    snc_pacer_min = config.get("snc_pacer_min", 0.1)
     snr_pacer_max = config.get("snr_pacer_max", 0.8)
-    snr_pacer_min = config.get("snr_pacer_min", 0.4)
+    snr_pacer_min = config.get("snr_pacer_min", 0.2)
     gpe_pacer_max = config.get("gpe_pacer_max", 0.8)
-    gpe_pacer_min = config.get("gpe_pacer_min", 0.4)
+    gpe_pacer_min = config.get("gpe_pacer_min", 0.2)
 
     snc_pacer = snc_pacer_min + sigmoid(p_snc) * (snc_pacer_max - snc_pacer_min)
     snr_pacer = snr_pacer_min + sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
@@ -553,7 +545,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
         #y_t = nln(c_med @ x_med[:2])  # floored readout (rests at 0 -> no RL exploration)
         # Biased sigmoid readout: nonzero resting prob (~sigmoid(out_bias)) so the
-        # policy explores, with out_gain giving dynamic range above/below rest.
         y_t = nln((c_med @ x_med[:2]))  # readout from E units only
 
         # Pack the full cortex/thalamus state ([cU..., cL..., c_inh...]) into the

@@ -68,7 +68,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            10000, # number of iters
+            20000, # number of iters
             batch_targets=targets,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
@@ -96,15 +96,15 @@ def main():
             inputs,
             masks,
             optimizer,
-            5000,#train_cfg["num_iters"], # number of iters
+            10000,#train_cfg["num_iters"], # number of iters
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
             baseline_momentum=rl_cfg["baseline_momentum"],
             entropy_coef=rl_cfg["entropy_coef"],
             objective_mode=rl_cfg.get("objective_mode", "log_reward"),
             batch_targets=targets,
-            brevity_coef=rl_cfg.get("brevity_coef", 0.1),
-            silence_coef=rl_cfg.get("silence_coef", 0.1),
+            brevity_coef=rl_cfg.get("brevity_coef", 1.0),
+            silence_coef=rl_cfg.get("silence_coef", 1.0),
             tail_coef=rl_cfg.get("tail_coef", 1.0),
             # Structural penalties disabled during Pavlovian: with tanh() wrapping
             # every inter-area projection, weight-norm-based floors no longer map
@@ -120,9 +120,9 @@ def main():
             c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
             gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
             gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
-            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
-            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
-            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.1),
+            dead_area_coef=rl_cfg.get("dead_area_coef", 1.0),
+            dead_area_min=rl_cfg.get("dead_area_min", 0.01),
+            dead_proj_coef=rl_cfg.get("dead_proj_coef", 1.0),
             dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.01),
         )
 

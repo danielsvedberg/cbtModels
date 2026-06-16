@@ -29,7 +29,7 @@ RNN_CONFIG = {
     "n_output":1,
     "g_bg": 1.0,
     "g_nm": 1.0,
-    "noise_std": 0.05,
+    "noise_std": 0.1,
 }
 
 OPTIM_CONFIG = {
@@ -40,15 +40,15 @@ RL_CONFIG = {
     "entropy_coef": 0.01,
     "baseline_momentum": 0.99,
     "objective_mode": "log_reward",
-    "brevity_coef": 0.5,
-    "silence_coef": 0.5,
-    "tail_coef": 0.5,
-    "asym_coef": 0.1,
+    "brevity_coef": 1.0,
+    "silence_coef": 1.0,
+    "tail_coef": 1.0,
+    "asym_coef": 0.0,
     "asym_margin": 0.5,
     "rest_pka_coef": 0.0,
     "rest_pka_margin": 0.9,
-    "pathway_floor_coef": 0.1,
-    "pathway_floor_min": 1.5,
+    "pathway_floor_coef": 0.0,
+    "pathway_floor_min": 0.001,
     "c_snc_floor_coef": 0.2,
     "c_snc_floor_min": 0.2,
     # GPe kept alive structurally by the pacer floor (gpe_pacer_min >= 1 in
@@ -62,15 +62,15 @@ RL_CONFIG = {
     # max(0, dead_area_min - mean_late_activity)^2; the summed hinge penalizes a
     # single silenced region. Latter-half window prevents gaming via a high
     # initial transient that then decays to zero.
-    "dead_area_coef": 0.2,
+    "dead_area_coef": 1.0,
     "dead_area_min": 0.1,
     # Dead-projection floor: keep every synaptic projection (each 2-D weight
     # matrix) from collapsing to zero. A projection is dead when its mean
     # absolute weight < dead_proj_floor / n_connections, i.e. its total |weight|
     # (L1) < dead_proj_floor; the penalty is dead_proj_coef * max(0,
     # dead_proj_floor - sum|W|)^2 summed over projections.
-    "dead_proj_coef": 0.2,
-    "dead_proj_floor": 0.1,
+    "dead_proj_coef": 1.0,
+    "dead_proj_floor": 0.001,
 }
 
 TASK_CONFIG = {
@@ -98,7 +98,7 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 20000,
+    "num_iters": 50000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
     # Training objective for train_pavlovian: "reinforce" (policy gradient) or
@@ -109,7 +109,7 @@ TRAINING_CONFIG = {
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.05,
+    "noise_std": 0.1,
     "start_t": jnp.arange(270, 330, 10),
 }
 
