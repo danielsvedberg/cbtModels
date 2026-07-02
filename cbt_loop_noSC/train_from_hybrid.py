@@ -28,7 +28,7 @@ import self_timed_movement_task as stmt
 N_STMT_TRIALS = 100
 N_PAVLOVIAN_TRIALS = 10
 
-# Seed for randomizing the new timing-cue weight vector.
+# Seed for randomizing the new timing-cue weight vector (legacy fallback only).
 CUE_RERANDOM_SEED = 1234
 
 

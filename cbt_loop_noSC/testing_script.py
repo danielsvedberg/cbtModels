@@ -19,12 +19,24 @@ import test_pnr
 import opto_script
 
 
-def _build_weight_matrix(params):
-    """Assemble the full effective weight matrix including input and output lines."""
+def _build_weight_matrix(params, config=None):
+    """Assemble the full effective weight matrix including input and output lines.
+
+    Applies the exact same transforms the network uses in cbt_rnn.multiregion_rnn:
+    exc=sigmoid / inh=-sigmoid, plus the additive connection-floor offsets on the
+    floored projections and the per-SPN neuromodulator gains (sigmoid + m_floor).
+    ``config`` supplies the floor magnitudes (m_floor / m_floor_a1 / m_floor_a2 /
+    da_pka_gain / snr_med_floor); sensible defaults match the current config.
+    """
+    cfg_d = config or {}
+    m_floor = cfg_d.get("m_floor", 0.01)
+    m_floor_a1 = cfg_d.get("m_floor_a1", 0.1)
+    m_floor_a2 = cfg_d.get("m_floor_a2", 0.1)
+    da_pka_gain = cfg_d.get("da_pka_gain", 1.0)
+    snr_med_floor = cfg_d.get("snr_med_floor", 0.01)
     n_c_U   = params["J_cU"].shape[0]
     n_c_L   = params["J_cL"].shape[0]
     n_c_inh = params["J_c_ii"].shape[0]
-    n_c     = n_c_U + n_c_L + n_c_inh
     n_d1  = params["J_d1"].shape[0]
     n_d2  = params["J_d2"].shape[0]
     n_snc = params["P_snc"].shape[0]
@@ -38,14 +50,11 @@ def _build_weight_matrix(params):
     n_in  = params["B_cue_cU"].shape[1]   # number of input channels
     n_out = params["C_med"].shape[0]      # number of output channels
 
-    def _from_cU(block):
-        block = np.array(block)
-        return np.concatenate([block, np.zeros((block.shape[0], n_c_L + n_c_inh))], axis=1)
-
-    def _from_cL(block):
-        block = np.array(block)
-        return np.concatenate([np.zeros((block.shape[0], n_c_U)), block,
-                               np.zeros((block.shape[0], n_c_inh))], axis=1)
+    def _no_diag(m):
+        # Prohibit autapses: zero the self-connection (diagonal) of a within-
+        # population recurrent block, matching cbt_rnn.no_autapse.
+        m = np.array(m)
+        return m * (1.0 - np.eye(m.shape[0], dtype=m.dtype))
 
     def _to_t_pools(exc_block, inh_block):
         return np.concatenate([np.array(exc_block), np.array(inh_block)], axis=0)
@@ -55,11 +64,12 @@ def _build_weight_matrix(params):
         bot = np.concatenate([np.array(ie), np.array(ii)], axis=1)
         return np.concatenate([top, bot], axis=0)
 
-    # Cortex recurrence: 3x3 block matrix in [cU, cL, c_inh] order (rows=post).
-    row_cU = np.concatenate([cbtl.exc(params["J_cU"]),    cbtl.exc(params["B_cL_cU"]), cbtl.inh(params["J_ci_cU"])], axis=1)
-    row_cL = np.concatenate([cbtl.exc(params["B_cU_cL"]), cbtl.exc(params["J_cL"]),    cbtl.inh(params["J_ci_cL"])], axis=1)
-    row_ci = np.concatenate([cbtl.exc(params["J_cU_ci"]), cbtl.exc(params["J_cL_ci"]), cbtl.inh(params["J_c_ii"])],  axis=1)
-    j_c_full = np.concatenate([row_cU, row_cL, row_ci], axis=0)
+    def _from_t_exc(block):
+        # (n_post, n_t_exc) thalamic-exc drive -> full (n_post, n_t) source block
+        # (the thalamic inhibitory pool sends no cortical projection -> zeros).
+        block = np.array(block)
+        return np.concatenate([block, np.zeros((block.shape[0], n_t_inh))], axis=1)
+
     j_t_full = _assemble_J(
         cbtl.exc(params["J_t_ee"]), cbtl.inh(params["J_t_ei"]),
         cbtl.exc(params["J_t_ie"]), cbtl.inh(params["J_t_ii"]),
@@ -67,8 +77,10 @@ def _build_weight_matrix(params):
 
     # Input/Adenosine/Output are border areas: Input and Adenosine are tonic
     # sources (thin source lines), Output is a thin readout line.
-    areas = ["Input", "Adenosine", "Cortex", "D1", "D2", "SNc", "GPe", "STN", "SNr", "Thalamus", "Medulla", "Output"]
-    sizes = [n_in, 1, n_c, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_t, n_med, n_out]
+    # Cortex is split into its three populations (cU, cL excitatory PT pools +
+    # cI inhibitory interneurons), kept contiguous in [cU, cL, cI] order.
+    areas = ["Input", "Adenosine", "cU", "cL", "cI", "D1", "D2", "SNc", "GPe", "STN", "SNr", "Thalamus", "Medulla", "Output"]
+    sizes = [n_in, 1, n_c_U, n_c_L, n_c_inh, n_d1, n_d2, n_snc, n_gpe, n_stn, n_snr, n_t, n_med, n_out]
 
     offsets = {}
     off = 0
@@ -84,69 +96,85 @@ def _build_weight_matrix(params):
         c0, c1 = offsets[src]
         W[r0:r1, c0:c1] = np.array(block)
 
-    # Input → Cortex (cue projects to both exc and inh pools).
-    place("Cortex",   "Input",    np.concatenate(
-        [np.array(params["B_cue_cU"]), np.array(params["B_cue_cL"]), np.array(params["B_cue_c_inh"])], axis=0))
-    # Recurrent and inter-area connections
-    place("Cortex",   "Cortex",   j_c_full)
-    # Thalamus → Cortex: only thalamic exc projects; cortex exc + inh receive.
-    to_c_from_t_exc = np.concatenate(
-        [cbtl.exc(params["B_t_cU"]), np.zeros((n_c_L, n_t_exc)), cbtl.exc(params["B_t_c_inh"])], axis=0)
-    b_t_c_full = np.concatenate([to_c_from_t_exc, np.zeros((n_c, n_t_inh))], axis=1)
-    place("Cortex",   "Thalamus", b_t_c_full)
-    place("D1",       "Cortex",   _from_cU(cbtl.exc(params["B_cU_d1"])))
-    place("D1",       "D1",       cbtl.inh(params["J_d1"]))
+    # Input → cortex: cue is excitatory (sigmoid) and targets the projection
+    # pools cU/cL only (cI receives no direct cue; legacy cue->cI shown if present).
+    place("cU",       "Input",    cbtl.exc(params["B_cue_cU"]))
+    place("cL",       "Input",    cbtl.exc(params["B_cue_cL"]))
+    if "B_cue_c_inh" in params:
+        place("cI",   "Input",    cbtl.exc(params["B_cue_c_inh"]))
+    # Cortex recurrence (post <- pre), Dale's law: cU/cL excitatory, cI inhibitory.
+    place("cU",       "cU",       _no_diag(cbtl.exc(params["J_cU"])))
+    place("cU",       "cL",       cbtl.exc(params["B_cL_cU"]))
+    place("cU",       "cI",       cbtl.inh(params["J_ci_cU"]))
+    place("cL",       "cU",       cbtl.exc(params["B_cU_cL"]))
+    place("cL",       "cL",       _no_diag(cbtl.exc(params["J_cL"])))
+    place("cL",       "cI",       cbtl.inh(params["J_ci_cL"]))
+    place("cI",       "cU",       cbtl.exc(params["J_cU_ci"]))
+    place("cI",       "cL",       cbtl.exc(params["J_cL_ci"]))
+    place("cI",       "cI",       _no_diag(cbtl.inh(params["J_c_ii"])))
+    # Thalamus → cortex: only thalamic exc projects, to cU (reciprocal) and cI
+    # (feedforward inhibition target); cL receives none.
+    place("cU",       "Thalamus", _from_t_exc(cbtl.exc(params["B_t_cU"])))
+    place("cI",       "Thalamus", _from_t_exc(cbtl.exc(params["B_t_c_inh"])))
+    # Floored projections: the model adds a small constant offset (±0.1/n) to keep
+    # these pathways from collapsing (cbt_rnn.multiregion_rnn). Mirror it here.
+    place("D1",       "cU",       np.array(cbtl.exc(params["B_cU_d1"])) + 0.1 / n_c_U)
+    place("D1",       "D1",       _no_diag(cbtl.inh(params["J_d1"])))
     # D1↔D2 lateral inhibition is optional (may be disabled in the model).
     if "B_d2_d1" in params:
         place("D1",       "D2",       cbtl.inh(params["B_d2_d1"]))
-    place("D2",       "Cortex",   _from_cU(cbtl.exc(params["B_cU_d2"])))
-    place("D2",       "D2",       cbtl.inh(params["J_d2"]))
+    place("D2",       "cU",       np.array(cbtl.exc(params["B_cU_d2"])) + 0.1 / n_c_U)
+    place("D2",       "D2",       _no_diag(cbtl.inh(params["J_d2"])))
     if "B_d1_d2" in params:
         place("D2",       "D1",       cbtl.inh(params["B_d1_d2"]))
-    place("SNc",      "Cortex",   _from_cL(cbtl.exc(params["B_cL_snc"])))
+    place("SNc",      "cL",       np.array(cbtl.exc(params["B_cL_snc"])) + 0.1 / n_c_L)
     place("SNc",      "STN",      cbtl.exc(params["B_stn_snc"]))
     place("SNc",      "D1",       cbtl.inh(params["B_d1_snc"]))
     place("SNc",      "D2",       cbtl.inh(params["B_d2_snc"]))
     # --- Neuromodulatory weights (dopamine + adenosine) onto D1/D2 PKA -----
-    # Dopamine: SNc is broadcast (mean-pooled) as a single scalar to every SPN;
-    # each SPN has a 1-D per-neuron gain m_d1[i] / m_d2[i]. To depict that in
-    # the full weight matrix, spread each row's gain evenly across the n_snc
-    # source columns (row-sum = effective scalar gain).
-    m_floor = 0.1
+    # Per-SPN receptor gains use the SAME transform as the model: sigmoid(p) plus
+    # the relevant floor (m_floor for DA, m_floor_a1/a2 for adenosine). DA / ATP→
+    # adenosine are co-released from SNc and act through the dynamic striatal
+    # concentration states x_da / x_ado (not static weights), so these cells show
+    # only the *coupling strength* (receptor sensitivity), not the time-varying
+    # concentration. DA: SNc is mean-pooled to a scalar then scaled per SPN, so
+    # each row's gain is spread evenly across the n_snc source columns (row-sum =
+    # da_pka_gain·(sigmoid(m_d)+m_floor), the effective scalar gain on x_da).
     if "m_d1" in params:
-        g_d1 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_d1"])))  # (n_d1,)
+        g_d1 = m_floor + np.array(cbtl.exc(params["m_d1"]))  # (n_d1,)
         place("D1", "SNc",
-              np.broadcast_to(g_d1[:, None], (n_d1, n_snc)) / n_snc)
+              da_pka_gain * np.broadcast_to(g_d1[:, None], (n_d1, n_snc)) / n_snc)
     if "m_d2" in params:
-        g_d2 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_d2"])))  # (n_d2,)
+        g_d2 = m_floor + np.array(cbtl.exc(params["m_d2"]))  # (n_d2,) — DA inhibits D2 PKA
         place("D2", "SNc",
-              -np.broadcast_to(g_d2[:, None], (n_d2, n_snc)) / n_snc)
-    # Adenosine: one tonic level k_a drives every SPN through per-neuron weights
-    # m_a1 (inhibitory on D1 PKA) and m_a2 (excitatory on D2 PKA). The depicted
-    # edge is the effective scalar contribution m_a · k_a.
-    k_a = max(0.0, np.tanh(float(np.array(params.get("k_a", 1.0)))))
+              -da_pka_gain * np.broadcast_to(g_d2[:, None], (n_d2, n_snc)) / n_snc)
+    # Adenosine (A1R inhibits D1 PKA, A2R excites D2 PKA). Edge = receptor gain
+    # sigmoid(m_a)+m_floor_a; the dynamic x_ado concentration scales it at runtime.
     if "m_a1" in params:
-        g_a1 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a1"])))  # (n_d1,)
-        place("D1", "Adenosine", -(g_a1 * k_a).reshape(n_d1, 1))
+        g_a1 = m_floor_a1 + np.array(cbtl.exc(params["m_a1"]))  # (n_d1,)
+        place("D1", "Adenosine", -g_a1.reshape(n_d1, 1))
     if "m_a2" in params:
-        g_a2 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a2"])))  # (n_d2,)
-        place("D2", "Adenosine", (g_a2 * k_a).reshape(n_d2, 1))
-    place("GPe",      "D2",       cbtl.inh(params["B_d2_gpe"]))
-    place("GPe",      "Cortex",   _from_cU(cbtl.exc(params["B_cU_gpe"])))  # cU → GPe (exc)
+        g_a2 = m_floor_a2 + np.array(cbtl.exc(params["m_a2"]))  # (n_d2,)
+        place("D2", "Adenosine", g_a2.reshape(n_d2, 1))
+    place("GPe",      "D2",       np.array(cbtl.inh(params["B_d2_gpe"])) - 0.1 / n_d2)
+    place("GPe",      "cU",       np.array(cbtl.exc(params["B_cU_gpe"])) + 0.1 / n_c_U)  # cU → GPe (exc)
     place("GPe",      "STN",      cbtl.exc(params["B_stn_gpe"]))
-    place("GPe",      "GPe",      cbtl.inh(params["J_gpe"]))
+    place("GPe",      "GPe",      _no_diag(cbtl.inh(params["J_gpe"])))
     place("STN",      "GPe",      cbtl.inh(params["B_gpe_stn"]))
-    place("STN",      "Cortex",   _from_cU(cbtl.exc(params["B_cU_stn"])) + _from_cL(cbtl.exc(params["B_cL_stn"])))  # hyperdirect cU & cL
-    place("STN",      "STN",      cbtl.exc(params["J_stn"]))
-    place("SNr",      "D1",       cbtl.inh(params["B_d1_snr"]))
+    place("STN",      "cU",       cbtl.exc(params["B_cU_stn"]))  # hyperdirect (cU)
+    place("STN",      "cL",       cbtl.exc(params["B_cL_stn"]))  # hyperdirect (cL)
+    place("STN",      "STN",      _no_diag(cbtl.exc(params["J_stn"])))
+    place("SNr",      "D1",       np.array(cbtl.inh(params["B_d1_snr"])) - 0.1 / n_d1)
     place("SNr",      "STN",      cbtl.exc(params["B_stn_snr"]))
-    place("SNr",      "GPe",      cbtl.inh(params["B_gpe_snr"]))
-    # Cortex → Thalamus: only cortical exc projects; thalamus exc + inh receive.
+    place("SNr",      "GPe",      np.array(cbtl.inh(params["B_gpe_snr"])) - 0.1 / n_gpe)
+    # Cortex → Thalamus: only cU projects (to both thalamic pools).
     b_cU_t = _to_t_pools(cbtl.exc(params["B_cU_t_exc"]), cbtl.exc(params["B_cU_t_inh"]))  # (n_t, n_c_U)
-    place("Thalamus", "Cortex",   _from_cU(b_cU_t))
-    place("Thalamus", "SNr",      _to_t_pools(cbtl.inh(params["B_snr_t_exc"]),
+    place("Thalamus", "cU",       b_cU_t)
+    place("Thalamus", "SNr",      _to_t_pools(np.array(cbtl.inh(params["B_snr_t_exc"])) - 0.1 / n_snr,
                                               cbtl.inh(params["B_snr_t_inh"])))
-    place("Thalamus", "Thalamus", j_t_full)
+    # j_t_full's global diagonal hits exactly the T_exc/T_inh self-terms (the
+    # cross E/I quadrants are off-diagonal), so zeroing it removes thalamic autapses.
+    place("Thalamus", "Thalamus", _no_diag(j_t_full))
     def _med_block(raw):
         return np.concatenate([np.array(cbtl.exc(raw[:, :1])), np.array(cbtl.inh(raw[:, 1:]))], axis=1)
 
@@ -159,11 +187,17 @@ def _build_weight_matrix(params):
         [j_w1[1, 0], j_x[1, 0],  j_w1[1, 1], j_x[1, 1]],
         [j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]],
     ])
-    place("Medulla",  "Medulla",  j_med)
-    # B_cL_med is (2, n_c_L): cL projects to medullary E units only (cL columns).
+    place("Medulla",  "Medulla",  _no_diag(j_med))
+    # B_cL_med is (2, n_c_L): cL projects to medullary E units only (first 2 rows).
+    # Excitatory (sigmoid) in the model — apply exc(), not raw stored weights.
     r0 = offsets["Medulla"][0]
-    c0, c1 = offsets["Cortex"]
-    W[r0:r0 + 2, c0 + n_c_U:c0 + n_c_U + n_c_L] = np.array(params["B_cL_med"])
+    cL_c0, cL_c1 = offsets["cL"]
+    W[r0:r0 + 2, cL_c0:cL_c1] = np.array(cbtl.exc(params["B_cL_med"]))
+    # SNr → Medulla E units only: inhibitory with a floored magnitude, matching
+    # the model b_snr_med = -(exc(B_snr_med) + snr_med_floor), shape (2, n_snr).
+    if "B_snr_med" in params:
+        snr_c0, snr_c1 = offsets["SNr"]
+        W[r0:r0 + 2, snr_c0:snr_c1] = -(np.array(cbtl.exc(params["B_snr_med"])) + snr_med_floor)
     # Medulla → Output: readout from E units only (first 2 columns of Medulla).
     r0, r1 = offsets["Output"]
     c0 = offsets["Medulla"][0]
@@ -173,8 +207,8 @@ def _build_weight_matrix(params):
     return W, labels, areas, sizes, offsets
 
 
-def _save_weight_matrix(params, plots_folder):
-    W, labels, areas, sizes, offsets = _build_weight_matrix(params)
+def _save_weight_matrix(params, plots_folder, config=None):
+    W, labels, areas, sizes, offsets = _build_weight_matrix(params, config)
     plots_folder = Path(plots_folder)
 
     # CSV with row and column unit labels
@@ -449,7 +483,7 @@ def main():
         print("mean response time (s): NaN (no responses)")
 
     # --- Weight matrix --------------------------------------------------
-    _safe("weight matrix (csv + heatmap)", _save_weight_matrix, params, cfg.plots_folder)
+    _safe("weight matrix (csv + heatmap)", _save_weight_matrix, params, cfg.plots_folder, config)
 
     # --- Core activity plots -------------------------------------------
     _safe("output activity", pf.plot_output, all_ys)

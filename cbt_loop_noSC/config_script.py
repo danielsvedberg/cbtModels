@@ -29,7 +29,7 @@ RNN_CONFIG = {
     "n_output":1,
     "g_bg": 1.0,
     "g_nm": 1.0,
-    "noise_std": 0.1,
+    "noise_std": 0.01,
 }
 
 OPTIM_CONFIG = {
@@ -37,24 +37,24 @@ OPTIM_CONFIG = {
 }
 
 RL_CONFIG = {
-    "entropy_coef": 0.01,
+    "entropy_coef": 0.1,
     "baseline_momentum": 0.99,
     "objective_mode": "log_reward",
-    "brevity_coef": 1.0,
-    "silence_coef": 1.0,
-    "tail_coef": 1.0,
+    "brevity_coef": 0.1,
+    "silence_coef": 0.1,
+    "tail_coef": 0.1,
     "asym_coef": 0.0,
     "asym_margin": 0.5,
     "rest_pka_coef": 0.0,
     "rest_pka_margin": 0.9,
     "pathway_floor_coef": 0.0,
     "pathway_floor_min": 0.001,
-    "c_snc_floor_coef": 0.2,
+    "c_snc_floor_coef": 0.0,
     "c_snc_floor_min": 0.2,
     # GPe kept alive structurally by the pacer floor (gpe_pacer_min >= 1 in
     # cbt_rnn config), so the activity-floor penalty is disabled (coef=0). Raise
     # gpe_floor_coef to re-enable it as a soft push above the pacer-set level.
-    "gpe_floor_coef": 0.2,
+    "gpe_floor_coef": 0.0,
     "gpe_floor_min": 0.2,
     # Dead-area inactivity floor: require every region (Cortex, D1, D2, SNc, GPe,
     # SNr, Thalamus, Medulla) to keep mean activity above dead_area_min over the
@@ -62,7 +62,7 @@ RL_CONFIG = {
     # max(0, dead_area_min - mean_late_activity)^2; the summed hinge penalizes a
     # single silenced region. Latter-half window prevents gaming via a high
     # initial transient that then decays to zero.
-    "dead_area_coef": 1.0,
+    "dead_area_coef": 0.0,
     "dead_area_min": 0.1,
     # Dead-projection floor: keep every synaptic projection (each 2-D weight
     # matrix) from collapsing to zero. A projection is dead when its mean
@@ -70,7 +70,7 @@ RL_CONFIG = {
     # (L1) < dead_proj_floor; the penalty is dead_proj_coef * max(0,
     # dead_proj_floor - sum|W|)^2 summed over projections.
     "dead_proj_coef": 1.0,
-    "dead_proj_floor": 0.001,
+    "dead_proj_floor": 0.0001,
 }
 
 TASK_CONFIG = {
@@ -109,12 +109,13 @@ TRAINING_CONFIG = {
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.1,
+    "noise_std": 0.01,
     "start_t": jnp.arange(270, 330, 10),
 }
 
 PARAMS_FILENAME = "params_shaped.pkl"
 PAVLOVIAN_PARAMS_FILENAME = "params_pavlovian.pkl"
+HYBRID_PARAMS_FILENAME = "params_hybrid.pkl"
 SHAPED_PARAMS_FILENAME = "params_shaped.pkl"
 
 
@@ -124,6 +125,10 @@ def params_path() -> Path:
 
 def pavlovian_params_path() -> Path:
     return Path(__file__).resolve().parent / PAVLOVIAN_PARAMS_FILENAME
+
+
+def hybrid_params_path() -> Path:
+    return Path(__file__).resolve().parent / HYBRID_PARAMS_FILENAME
 
 
 def shaped_params_path() -> Path:

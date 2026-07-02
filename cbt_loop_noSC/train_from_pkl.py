@@ -64,6 +64,12 @@ def main():
         )
 
     inputs, targets, masks = _build_task(task_cfg)
+    # The loaded model may expect more cue channels than the task emits (e.g. a
+    # 2-channel [timing, go] cue from the hybrid lineage vs. the 1-channel
+    # self-timed cue). Zero-pad the missing channels — the final self-timed task
+    # has no go cue, so channel 1 is simply held at zero.
+    inputs = cbtl.match_input_channels(inputs, params)
+    print(f"Task inputs (cue-channel matched): {tuple(inputs.shape)}")
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),

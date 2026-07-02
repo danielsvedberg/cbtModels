@@ -35,17 +35,25 @@ def bg_nln(x, b):
     # x = jnp.maximum(0.0, x)
     #return x**jnp.exp(1) / (x**jnp.exp(1) + (1-b))
     c = b/(1-b)
-    return jax.nn.tanh(c*x)
+    return jnp.maximum(jax.nn.tanh(c*x), 0)
+
+def bg_nln_inh(x, b):
+    c = 1-(b/(1-b))
+    return jnp.minimum(jax.nn.tanh(-x*c), 0)
 
 
-# Indices into the rnn_func state tuple (cbt_rnn.STATE_AREA_ORDER) excluded from
-# the dead-area inactivity floor. Indices 7, 8 are the PKA excitability traces
-# (a modulatory signal, not an area's output rate); index 9 is the Medulla,
-# excluded so the motor-output region can go quiet between responses.
+
+# Default indices into the rnn_func state tuple (cbt_rnn.STATE_AREA_ORDER)
+# excluded from the dead-area inactivity floor: the two PKA excitability traces
+# (modulatory signals, not area output rates) and the Medulla (excluded so the
+# motor-output region can go quiet between responses). This default matches the
+# no-STN/no-SC ordering; families with different state orderings (extra areas,
+# DA/adenosine concentration states) pass their own skip set as the optional 6th
+# rnn_func return, which overrides this default.
 _DEAD_AREA_SKIP_INDICES = (7, 8, 9)
 
 
-def dead_area_floor_loss(all_xs, coef, floor_min, dtype):
+def dead_area_floor_loss(all_xs, coef, floor_min, dtype, skip_indices=_DEAD_AREA_SKIP_INDICES):
     """Penalize any region whose mean *late-trial* activity falls below a floor.
 
     For each area trajectory in ``all_xs`` (the full state tuple returned by
@@ -63,7 +71,7 @@ def dead_area_floor_loss(all_xs, coef, floor_min, dtype):
         return jnp.array(0.0, dtype=dtype)
     loss = jnp.array(0.0, dtype=dtype)
     for i, area_traj in enumerate(all_xs):
-        if i in _DEAD_AREA_SKIP_INDICES:
+        if i in skip_indices:
             continue
         # area_traj: (batch, T, n) — average only the late (second-half) window.
         half = area_traj.shape[1] // 2
@@ -569,6 +577,9 @@ def reinforce_loss(
     # Optional full state tuple (exposed last by rnn_func) for the dead-area
     # inactivity floor; None for families whose rnn_func returns only PKA/GPe.
     all_xs = _rnn_out[4] if len(_rnn_out) > 4 else None
+    # Optional 6th return: per-family dead-area skip indices (modulatory / quiet
+    # states to exclude from the inactivity floor). Falls back to the default.
+    dead_skip = _rnn_out[5] if len(_rnn_out) > 5 else _DEAD_AREA_SKIP_INDICES
     probs = jnp.clip(ys[..., 0], 1e-6, 1.0 - 1e-6)  # (batch, T)
     batch_size, T = probs.shape
     eps = 1e-7
@@ -730,7 +741,7 @@ def reinforce_loss(
 
     # Dead-area inactivity floor: require every region to stay active over the
     # latter half of each trial (see dead_area_floor_loss).
-    dead_area_loss = dead_area_floor_loss(all_xs, dead_area_coef, dead_area_min, probs.dtype)
+    dead_area_loss = dead_area_floor_loss(all_xs, dead_area_coef, dead_area_min, probs.dtype, dead_skip)
 
     # Dead-projection floor: keep every synaptic projection from collapsing to
     # zero (mean |weight| < dead_proj_floor / n_connections).
@@ -990,6 +1001,9 @@ def supervised_loss(
     gpe_traj = _rnn_out[3] if len(_rnn_out) > 3 else None
     # Optional full state tuple (exposed last) for the dead-area inactivity floor.
     all_xs = _rnn_out[4] if len(_rnn_out) > 4 else None
+    # Optional 6th return: per-family dead-area skip indices (modulatory / quiet
+    # states to exclude from the inactivity floor). Falls back to the default.
+    dead_skip = _rnn_out[5] if len(_rnn_out) > 5 else _DEAD_AREA_SKIP_INDICES
     eps = 1e-7
     probs = jnp.clip(ys[..., 0], eps, 1.0 - eps)  # (batch, T)
     batch_size, T = probs.shape
@@ -1077,7 +1091,7 @@ def supervised_loss(
 
     # Dead-area inactivity floor (see reinforce_loss): keep every region active
     # over the latter half of each trial.
-    dead_area_loss = dead_area_floor_loss(all_xs, dead_area_coef, dead_area_min, probs.dtype)
+    dead_area_loss = dead_area_floor_loss(all_xs, dead_area_coef, dead_area_min, probs.dtype, dead_skip)
 
     # Dead-projection floor (see reinforce_loss): keep every synaptic projection
     # from collapsing toward zero.

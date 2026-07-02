@@ -1183,3 +1183,234 @@ def plot_colorbar(vmin, vmax, cmap_name, label, filename, ticks=None, ticklabels
         
     plt.tight_layout()
     save_fig(fig, filename)
+
+
+# ---------------------------------------------------------------------------
+# Network connectivity diagram
+# ---------------------------------------------------------------------------
+
+# Each entry: (param_key, src_node, dst_node, sign, kind). ``param_key`` is the
+# cbt_rnn parameter that instantiates the projection (None for the SNc release
+# of DA/adenosine, which is a release process rather than a weight matrix). When
+# ``params`` is supplied, only edges whose param_key is present are drawn, so the
+# diagram reflects whichever connections actually exist in that family's model.
+# ``sign`` is 'exc' (arrowhead) or 'inh' (T-bar); ``kind`` is 'syn' (synaptic),
+# 'mod' (neuromodulatory, drawn dashed) or 'self' (within-area recurrence).
+_NET_EDGES = [
+    # cue -> cortex (excitatory projection pools cU/cL only)
+    ('B_cue_cU', 'Cue', 'cU', 'exc', 'syn'),
+    ('B_cue_cL', 'Cue', 'cL', 'exc', 'syn'),
+    # cortex internal (cU/cL excitatory PT pools + shared inhibitory c_inh)
+    ('B_cU_cL', 'cU', 'cL', 'exc', 'syn'),
+    ('B_cL_cU', 'cL', 'cU', 'exc', 'syn'),
+    ('J_cU_ci', 'cU', 'c_inh', 'exc', 'syn'),
+    ('J_cL_ci', 'cL', 'c_inh', 'exc', 'syn'),
+    ('J_ci_cU', 'c_inh', 'cU', 'inh', 'syn'),
+    ('J_ci_cL', 'c_inh', 'cL', 'inh', 'syn'),
+    # thalamus <-> cortex
+    ('B_t_cU', 'Texc', 'cU', 'exc', 'syn'),
+    ('B_t_c_inh', 'Texc', 'c_inh', 'exc', 'syn'),
+    ('B_cU_t_exc', 'cU', 'Texc', 'exc', 'syn'),
+    ('B_cU_t_inh', 'cU', 'Tinh', 'exc', 'syn'),
+    # thalamus internal E/I
+    ('J_t_ei', 'Tinh', 'Texc', 'inh', 'syn'),
+    ('J_t_ie', 'Texc', 'Tinh', 'exc', 'syn'),
+    # cortex -> basal ganglia
+    ('B_cU_d1', 'cU', 'D1', 'exc', 'syn'),
+    ('B_cU_d2', 'cU', 'D2', 'exc', 'syn'),
+    ('B_cU_gpe', 'cU', 'GPe', 'exc', 'syn'),
+    ('B_cL_snc', 'cL', 'SNc', 'exc', 'syn'),
+    ('B_cU_stn', 'cU', 'STN', 'exc', 'syn'),  # hyperdirect
+    ('B_cL_stn', 'cL', 'STN', 'exc', 'syn'),  # hyperdirect
+    # striatal output (direct / indirect) + striatum -> SNc
+    ('B_d1_snr', 'D1', 'SNr', 'inh', 'syn'),
+    ('B_d2_gpe', 'D2', 'GPe', 'inh', 'syn'),
+    ('B_d1_snc', 'D1', 'SNc', 'inh', 'syn'),
+    ('B_d2_snc', 'D2', 'SNc', 'inh', 'syn'),
+    # D1 <-> D2 lateral inhibition. NOTE: currently disabled in init_params
+    # (B_d1_d2 / B_d2_d1 are commented out and the runtime weights zeroed), so
+    # these only appear when a model actually instantiates those params; the
+    # full-topology view (params=None) shows them as the intended wiring.
+    ('B_d1_d2', 'D1', 'D2', 'inh', 'syn'),
+    ('B_d2_d1', 'D2', 'D1', 'inh', 'syn'),
+    # pallidum / STN
+    ('B_gpe_snr', 'GPe', 'SNr', 'inh', 'syn'),
+    ('B_gpe_snc', 'GPe', 'SNc', 'inh', 'syn'),
+    ('B_gpe_stn', 'GPe', 'STN', 'inh', 'syn'),
+    ('B_stn_gpe', 'STN', 'GPe', 'exc', 'syn'),
+    ('B_stn_snr', 'STN', 'SNr', 'exc', 'syn'),
+    ('B_stn_snc', 'STN', 'SNc', 'exc', 'syn'),
+    # SNr -> thalamus (output gate)
+    ('B_snr_t_exc', 'SNr', 'Texc', 'inh', 'syn'),
+    ('B_snr_t_inh', 'SNr', 'Tinh', 'inh', 'syn'),
+    # motor output: cortex (exc) + SNr (inh) -> medulla -> output
+    ('B_cL_med', 'cL', 'Medulla', 'exc', 'syn'),
+    ('B_snr_med', 'SNr', 'Medulla', 'inh', 'syn'),
+    ('C_med', 'Medulla', 'Output', 'exc', 'syn'),
+    # neuromodulation: SNc co-releases DA + ATP->adenosine (no weight matrix),
+    # which act on striatal PKA through the receptor-gain weights m_*.
+    (None, 'SNc', 'DA', 'exc', 'mod'),
+    (None, 'SNc', 'Adenosine', 'exc', 'mod'),
+    ('m_d1', 'DA', 'D1', 'exc', 'mod'),         # D1R: DA raises dSPN PKA
+    ('m_d2', 'DA', 'D2', 'inh', 'mod'),         # D2R: DA lowers iSPN PKA
+    ('m_a1', 'Adenosine', 'D1', 'inh', 'mod'),  # A1R: adenosine lowers dSPN PKA
+    ('m_a2', 'Adenosine', 'D2', 'exc', 'mod'),  # A2R: adenosine raises iSPN PKA
+    # within-area recurrence (drawn only when draw_self=True)
+    ('J_cU', 'cU', 'cU', 'exc', 'self'),
+    ('J_cL', 'cL', 'cL', 'exc', 'self'),
+    ('J_c_ii', 'c_inh', 'c_inh', 'inh', 'self'),
+    ('J_d1', 'D1', 'D1', 'inh', 'self'),
+    ('J_d2', 'D2', 'D2', 'inh', 'self'),
+    ('J_stn', 'STN', 'STN', 'exc', 'self'),
+    ('J_t_ee', 'Texc', 'Texc', 'exc', 'self'),
+    ('J_t_ii', 'Tinh', 'Tinh', 'inh', 'self'),
+]
+
+_NET_POS = {
+    'Cue':       (1.0, 9.4),
+    'cU':        (2.4, 8.3),
+    'c_inh':     (3.9, 8.7),
+    'cL':        (1.0, 7.3),
+    'D1':        (1.7, 5.7),
+    'D2':        (3.3, 5.7),
+    'STN':       (5.1, 5.0),
+    'GPe':       (3.5, 4.0),
+    'SNr':       (2.7, 2.3),
+    'SNc':       (5.7, 3.1),
+    'DA':        (5.1, 6.7),
+    'Adenosine': (6.7, 6.1),
+    'Texc':      (7.4, 4.4),
+    'Tinh':      (8.6, 3.6),
+    'Medulla':   (1.0, 1.1),
+    'Output':    (2.6, 0.3),
+}
+
+_NET_LABELS = {
+    'Cue': 'Cue', 'cU': 'cU', 'cL': 'cL', 'c_inh': 'cI',
+    'D1': 'dSPN', 'D2': 'iSPN', 'GPe': 'GPe', 'STN': 'STN',
+    'SNr': 'SNr', 'SNc': 'SNc', 'Texc': 'Thal\nE', 'Tinh': 'Thal\nI',
+    'DA': 'DA', 'Adenosine': 'Ado', 'Medulla': 'Med', 'Output': 'Out',
+}
+
+_NET_GROUP = {
+    'Cue': 'input', 'cU': 'cortex', 'cL': 'cortex', 'c_inh': 'cortex_i',
+    'D1': 'striatum', 'D2': 'striatum', 'GPe': 'pallidum', 'STN': 'pallidum',
+    'SNr': 'nigra', 'SNc': 'mod', 'Texc': 'thal', 'Tinh': 'thal',
+    'DA': 'mod', 'Adenosine': 'mod', 'Medulla': 'output', 'Output': 'output',
+}
+
+_NET_GCOLOR = {
+    'input': '#d9d9d9', 'cortex': '#9ecae1', 'cortex_i': '#6baed6',
+    'striatum': '#a1d99b', 'pallidum': '#fdae6b', 'nigra': '#fc9272',
+    'thal': '#fee391', 'mod': '#bcbddc', 'output': '#cfcfcf',
+}
+
+
+def plot_network_diagram(params=None, ax=None, draw_self=True, draw_modulatory=True,
+                         title='CBT loop network (cbt_rnn)', filename='network_diagram'):
+    """Draw the cbt_rnn connectivity graph for this family.
+
+    Excitatory projections terminate in an arrowhead, inhibitory projections in
+    a T-bar. Neuromodulatory edges (SNc-released DA / adenosine acting on
+    striatal PKA) are drawn dashed. Reciprocal pairs are slightly curved so both
+    directions are visible; within-area recurrence is drawn as a self-loop.
+
+    Args:
+        params: optional cbt_rnn params dict (or a {'params': ...} bundle). When
+            given, only projections whose parameter exists are drawn, so the
+            figure matches that family's actual connectivity. When None, every
+            edge in ``_NET_EDGES`` is drawn.
+        ax: optional axis to draw into; a new figure is created if None.
+        draw_self: include within-area recurrent self-loops.
+        draw_modulatory: include the dashed DA / adenosine modulatory edges.
+        title: figure title.
+        filename: basename passed to save_fig (saved as svg/png).
+
+    Returns:
+        (fig, ax)
+    """
+    import matplotlib.patches as mpatches
+    from matplotlib.patches import FancyArrowPatch, Circle
+    from matplotlib.lines import Line2D
+
+    if params is not None and isinstance(params, dict) and 'params' in params and 'J_cU' not in params:
+        params = params['params']
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(11, 11))
+    else:
+        fig = ax.figure
+
+    node_r = 0.42
+    node_patch = {}
+    for name, (x, y) in _NET_POS.items():
+        c = Circle((x, y), node_r, facecolor=_NET_GCOLOR[_NET_GROUP[name]],
+                   edgecolor='k', lw=1.0, zorder=3)
+        ax.add_patch(c)
+        node_patch[name] = c
+        lab = _NET_LABELS[name]
+        ax.text(x, y, lab, ha='center', va='center', zorder=4,
+                fontsize=7 if len(lab) <= 4 else 6)
+
+    def _arrowstyle(sign):
+        if sign == 'exc':
+            return '-|>'
+        # inhibitory terminator: a flat perpendicular T-bar (bracket, no flanges)
+        return mpatches.ArrowStyle('-[', widthB=0.55, lengthB=0.0)
+
+    def _draw_edge(src, dst, sign, kind):
+        mod = (kind == 'mod')
+        color = '#9b59b6' if mod else '#333333'
+        ls = (0, (4, 2)) if mod else '-'
+        astyle = _arrowstyle(sign)
+        if kind == 'self':
+            # small loop sitting just above the node; terminator lands in the open
+            # space above so it isn't hidden behind the node.
+            x, y = _NET_POS[src]
+            pa = (x - 0.17, y + node_r + 0.04)
+            pb = (x + 0.17, y + node_r + 0.04)
+            fap = FancyArrowPatch(pa, pb, connectionstyle='arc3,rad=-2.4',
+                                  arrowstyle=astyle, mutation_scale=11,
+                                  color=color, lw=1.0, linestyle=ls, zorder=2)
+        else:
+            # shrinkB leaves a gap between the line end and the target node so the
+            # arrowhead / T-bar renders in open space (not clipped by the node).
+            fap = FancyArrowPatch(_NET_POS[src], _NET_POS[dst],
+                                  patchA=node_patch[src], patchB=node_patch[dst],
+                                  shrinkA=2, shrinkB=8,
+                                  connectionstyle='arc3,rad=0.13',
+                                  arrowstyle=astyle, mutation_scale=14,
+                                  color=color, lw=1.2, linestyle=ls, zorder=2)
+        ax.add_patch(fap)
+
+    for param_key, src, dst, sign, kind in _NET_EDGES:
+        if kind == 'self' and not draw_self:
+            continue
+        if kind == 'mod' and not draw_modulatory:
+            continue
+        if src not in _NET_POS or dst not in _NET_POS:
+            continue
+        if params is not None and param_key is not None and param_key not in params:
+            continue
+        _draw_edge(src, dst, sign, kind)
+
+    # Legend: sample excitatory arrow, inhibitory T-bar, modulatory dashed.
+    handles = [
+        FancyArrowPatch((0, 0), (1, 0), arrowstyle='-|>', mutation_scale=13,
+                        color='#333333', lw=1.2),
+        FancyArrowPatch((0, 0), (1, 0), arrowstyle=mpatches.ArrowStyle('-[', widthB=0.55, lengthB=0.0),
+                        mutation_scale=13, color='#333333', lw=1.2),
+        Line2D([0], [0], color='#9b59b6', lw=1.2, linestyle=(0, (4, 2))),
+    ]
+    ax.legend(handles, ['excitatory', 'inhibitory', 'neuromodulatory'],
+              loc='upper right', frameon=True, fontsize=8, handlelength=2.5)
+
+    ax.set_xlim(0.2, 9.4)
+    ax.set_ylim(-0.4, 10.2)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    ax.set_title(title)
+    plt.tight_layout()
+    if filename is not None:
+        save_fig(fig, filename)
+    return fig, ax
