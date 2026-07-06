@@ -83,7 +83,7 @@ DEAD_AREA_SKIP_INDICES = tuple(
 def init_params(
     rng_key,
     n_c_U=5,
-    n_c_L=4,
+    n_c_L=5,
     n_c_inh=4,
     n_d1=6,
     n_d2=6,
@@ -96,9 +96,9 @@ def init_params(
     n_med=4,
     n_input=1,
     n_output=1,
-    g_bg=0.5,
-    g_nm=0.5,
-    noise_std=0.05,
+    g_bg=1.0,
+    g_nm=1.0,
+    noise_std=0.01,
 ):
     """Initialize multiregion CBT loop params and runtime config.
 
@@ -255,12 +255,12 @@ def init_params(
         "ado_release": 1.0,
         "snc_pacer_min": 0.05,
         "snc_pacer_max": 0.15,
-        "snr_pacer_max": 0.5,
+        "snr_pacer_max": 0.7,
         "snr_pacer_min": 0.15,
         # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
         # (caps at -1), so the tonic pacer floor must exceed ~1 to keep GPe from
         # being silenced; gpe_pacer stays in [gpe_pacer_min, gpe_pacer_max] >= 1.
-        "gpe_pacer_min": 0.30,
+        "gpe_pacer_min": 0.05,
         "gpe_pacer_max": 0.7,
         "stn_pacer_min": 0.05,
         "stn_pacer_max": 0.2,

@@ -1,15 +1,17 @@
-"""Shaping transfer: start from Pavlovian-trained parameters and retrain on a
-mixed batch of self-timed movement (STMT) and Pavlovian trials.
+"""Final shaping transfer: start from the HYBRID-trained parameters and retrain
+on a mixed batch of self-timed movement (STMT) and Pavlovian trials.
+
+This is the last stage of the curriculum (Pavlovian -> hybrid -> full self-timed)
+and loads params_hybrid.pkl. The hybrid stage already established the two-channel
+cue layout — column 0 = timing (preparatory) cue, column 1 = Pavlovian/go cue —
+and trained both columns, so those weights carry straight over here (no
+re-randomization). If a legacy single-column (Pavlovian-only) bundle is loaded
+instead, the timing-cue column is freshly randomized as a fallback.
 
 Every training iteration sees N_STMT_TRIALS self-timed trials plus
-N_PAVLOVIAN_TRIALS Pavlovian trials. Inputs carry two cue channels — the
-timing (STMT) cue and the Pavlovian cue — and each drives cortex through its
-own column of B_cue_c, so the two cues have separate, independently trained
-input weight vectors.
-
-The timing-cue weight vector is freshly randomized (it is a new cue); the
-Pavlovian-cue weight vector carries over from Pavlovian training. Both are
-trainable. Trained parameters are saved to params_shaped.pkl.
+N_PAVLOVIAN_TRIALS Pavlovian trials. Inputs carry the two cue channels and each
+drives cortex through its own column of B_cue_c. Trained parameters are saved to
+params_shaped.pkl.
 """
 
 import pickle as pkl
@@ -26,7 +28,7 @@ import self_timed_movement_task as stmt
 N_STMT_TRIALS = 100
 N_PAVLOVIAN_TRIALS = 10
 
-# Seed for randomizing the new timing-cue weight vector.
+# Seed for randomizing the new timing-cue weight vector (legacy fallback only).
 CUE_RERANDOM_SEED = 1234
 
 
@@ -67,22 +69,28 @@ def _build_mixed_batch():
 
 
 def _make_dual_cue_weights(params, rng_key):
-    """Build a two-column cue→cortex projection for the excitatory cortical pools.
+    """Ensure a two-column cue→cortex projection [timing, Pavlovian/go] per pool.
 
-    Column 0 (timing/STMT cue) is freshly randomized — it is a new cue whose
-    meaning differs from the Pavlovian task. Column 1 (Pavlovian cue) carries
-    over the weights learned during Pavlovian training. Both columns are
-    trainable parameters and are updated during this run. The cue targets only
-    the excitatory cortical pools (cU, cL) through two weight tensors
-    (B_cue_cU / B_cue_cL); any legacy cue->c_inh weight is dropped.
+    If the loaded bundle already has the two-column cue layout (the expected case
+    when starting from hybrid-trained params), the weights are kept as-is — both
+    columns were already trained during the hybrid stage. Only a legacy
+    single-column (Pavlovian-only) bundle triggers the fallback: column 1 keeps
+    the carried-over Pavlovian cue and column 0 (timing) is freshly randomized.
+    The cue targets only the excitatory cortical pools (cU, cL) through two
+    weight tensors (B_cue_cU / B_cue_cL); any legacy cue->c_inh weight is dropped.
     """
     p = dict(params)
     p.pop("B_cue_c_inh", None)  # cue no longer projects to the inhibitory pool
     k_U, k_L = jr.split(rng_key, 2)
     for key, sub in (("B_cue_cU", k_U), ("B_cue_cL", k_L)):
-        pav_col = jnp.asarray(params[key])[:, -1:]  # (n, 1) carried-over Pavlovian cue
+        w = jnp.asarray(params[key])
+        if w.shape[1] >= 2:
+            # Already dual-cue (from hybrid training): keep trained columns.
+            p[key] = w
+            continue
+        pav_col = w[:, -1:]                          # (n, 1) carried-over Pavlovian cue
         n = pav_col.shape[0]
-        timing_col = jr.normal(sub, (n, 1))         # fresh timing-cue vector
+        timing_col = jr.normal(sub, (n, 1))          # fresh timing-cue vector
         p[key] = jnp.concatenate([timing_col, pav_col], axis=1)  # (n, 2)
     return p
 
@@ -92,13 +100,13 @@ def main():
     rl_cfg = cfg.RL_CONFIG
     rnn_cfg = cfg.RNN_CONFIG
 
-    pav_path = cfg.pavlovian_params_path()
-    print(f"Loading Pavlovian parameters from {pav_path}...")
+    src_path = cfg.hybrid_params_path()
+    print(f"Loading hybrid parameters from {src_path}...")
     try:
-        with pav_path.open("rb") as f:
+        with src_path.open("rb") as f:
             bundle = pkl.load(f)
     except FileNotFoundError:
-        print("Error: Pavlovian params not found. Please run train_pavlovian.py first.")
+        print("Error: hybrid params not found. Please run train_hybrid.py first.")
         raise SystemExit(1)
 
     if isinstance(bundle, dict) and "params" in bundle and "config" in bundle:
@@ -125,9 +133,10 @@ def main():
             noise_std=rnn_cfg["noise_std"],
         )
 
-    # Give the timing cue and the Pavlovian cue separate input weight vectors.
+    # Ensure dual cue→cortex weights (kept as-is from hybrid; re-randomized only
+    # for a legacy single-column bundle).
     params = _make_dual_cue_weights(params, jr.PRNGKey(CUE_RERANDOM_SEED))
-    print("Built dual cue→cortex weights B_cue_c (col 0 = timing, col 1 = Pavlovian).")
+    print("Dual cue→cortex weights B_cue_c ready (col 0 = timing, col 1 = Pavlovian/go).")
 
     inputs, targets, masks = _build_mixed_batch()
     print(f"Mixed batch: {N_STMT_TRIALS} STMT + {N_PAVLOVIAN_TRIALS} Pavlovian "

@@ -85,9 +85,10 @@ def _build_weight_matrix(params):
         c0, c1 = offsets[src]
         W[r0:r1, c0:c1] = np.array(block)
 
-    # Input → Cortex (cue projects to both exc and inh pools).
+    # Input → Cortex (cue projects to the excitatory pools only; c_inh gets no cue).
+    n_cue = np.array(params["B_cue_cU"]).shape[1]
     place("Cortex",   "Input",    np.concatenate(
-        [np.array(params["B_cue_cU"]), np.array(params["B_cue_cL"]), np.array(params["B_cue_c_inh"])], axis=0))
+        [np.array(params["B_cue_cU"]), np.array(params["B_cue_cL"]), np.zeros((n_c_inh, n_cue))], axis=0))
     # Recurrent and inter-area connections
     place("Cortex",   "Cortex",   j_c_full)
     # Thalamus → Cortex: only thalamic exc projects; cortex exc + inh receive.

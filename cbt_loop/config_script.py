@@ -116,6 +116,7 @@ TEST_CONFIG = {
 
 PARAMS_FILENAME = "params_shaped.pkl"
 PAVLOVIAN_PARAMS_FILENAME = "params_pavlovian.pkl"
+HYBRID_PARAMS_FILENAME = "params_hybrid.pkl"
 SHAPED_PARAMS_FILENAME = "params_shaped.pkl"
 
 
@@ -125,6 +126,10 @@ def params_path() -> Path:
 
 def pavlovian_params_path() -> Path:
     return Path(__file__).resolve().parent / PAVLOVIAN_PARAMS_FILENAME
+
+
+def hybrid_params_path() -> Path:
+    return Path(__file__).resolve().parent / HYBRID_PARAMS_FILENAME
 
 
 def shaped_params_path() -> Path:

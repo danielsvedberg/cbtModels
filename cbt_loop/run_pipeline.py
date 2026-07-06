@@ -4,6 +4,9 @@ import time
 
 import train_pavlovian
 import train_from_pavlovian
+import train_hybrid
+import test_hybrid
+import train_from_hybrid
 import testing_script
 
 
@@ -15,8 +18,10 @@ def _run(name, fn):
 
 
 def main():
-    #_run("train_pavlovian", train_pavlovian.main)
-    #_run("train_from_pavlovian", train_from_pavlovian.main)
+    _run("train_pavlovian", train_pavlovian.main)
+    _run("train_hybrid", train_hybrid.main)
+    _run("test_hybrid", test_hybrid.main)
+    _run("train_from_hybrid", train_from_hybrid.main)
     _run("testing_script", testing_script.main)
 
 

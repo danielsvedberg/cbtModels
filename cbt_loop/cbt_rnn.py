@@ -121,10 +121,9 @@ def init_params(
         "J_t_ei": (g_bg / math.sqrt(n_t_inh)) * jr.normal(skeys[45], (n_t_exc, n_t_inh)),
         "J_t_ie": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[46], (n_t_inh, n_t_exc)),
         "J_t_ii": (g_bg / math.sqrt(n_t_inh)) * jr.normal(skeys[47], (n_t_inh, n_t_inh)),
-        # Cue → cortex (all three pools receive).
+        # Cue → cortex (excitatory pools only; the inhibitory pool receives no cue).
         "B_cue_cU": (1 / math.sqrt(n_input)) * jr.normal(skeys[3],  (n_c_U, n_input)),
         "B_cue_cL": (1 / math.sqrt(n_input)) * jr.normal(skeys[57], (n_c_L, n_input)),
-        "B_cue_c_inh": (1 / math.sqrt(n_input)) * jr.normal(skeys[48], (n_c_inh, n_input)),
         # Thalamus exc → cU (reciprocal); feedforward inhibition to c_inh.
         "B_t_cU": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[4],  (n_c_U, n_t_exc)),
         "B_t_c_inh": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[49], (n_c_inh, n_t_exc)),
@@ -341,10 +340,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     p_snc = exc(params["P_snc"])
     p_gpe = exc(params.get("P_gpe", jnp.zeros(j_gpe.shape[0])))
 
-    # Cue → cortex (all three pools).
+    # Cue → cortex (excitatory pools only).
     b_cue_cU = exc(params["B_cue_cU"])
     b_cue_cL = exc(params["B_cue_cL"])
-    b_cue_c_inh = exc(params["B_cue_c_inh"])
     # Thalamus exc → cU (reciprocal) and → c_inh (feedforward inhibition).
     b_t_cU = exc(params["B_t_cU"])
     b_t_c_inh = exc(params["B_t_c_inh"])
@@ -519,9 +517,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_c_L = x_c_L + (1.0 / tau_c) * tanh(b_cue_cL @ u_t)
         x_c_L = nln(x_c_L)
 
+        # c_inh: recurrence + thalamic feedforward inhibition (no cue drive).
         x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * ci_rec
         x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_t_c_inh @ x_t_exc)
-        x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_cue_c_inh @ u_t)
         x_c_inh = nln(x_c_inh)
 
         # thalamus: same pre-step snapshot trick. SC drive uses prior-step x_sc.
