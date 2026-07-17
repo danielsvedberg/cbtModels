@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import pickle
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -13,12 +14,12 @@ SEED_CONFIG = {
 
 RNN_CONFIG = {
     "n_c": 10,
-    "n_d1": 6,
-    "n_d2": 6,
+    "n_d1": 4,
+    "n_d2": 4,
     "n_snc": 4,
     "n_snr": 6,
-    "n_gpe": 6,
-    "n_stn": 6,
+    "n_gpe": 4,
+    "n_stn": 4,
     "n_sc": 6,
     "n_t": 10,
     "n_med": 4,
@@ -110,12 +111,27 @@ opto_end = opto_start + 300#+ 175
 
 d1_stim_strength = jnp.arange(0.0, 1.0, 0.2)
 d2_stim_strength = jnp.arange(0.0, 1.0, 0.2)
-d1_suppress_strength = -d1_stim_strength
+# dSPN suppression is swept on its own (stronger) range rather than mirroring
+# d1_stim_strength: suppressing dSPNs at the excitation magnitudes produced too
+# weak an effect. Same number of levels, so the stim vectors/labels stay aligned.
+d1_suppress_strength = -jnp.arange(0.0, 4.0, 0.8)
 d2_suppress_strength = -d2_stim_strength
 
 # Construct spatial stim vectors in a model-agnostic way (n_d1 + n_d2 channels).
-_n_d1 = RNN_CONFIG["n_d1"]
-_n_d2 = RNN_CONFIG["n_d2"]
+# Sized from the saved params rather than RNN_CONFIG: the stim vectors are fed to
+# an already-trained model, whose striatal sizes may differ from the architecture
+# spec used for a fresh training run.
+def _striatal_sizes() -> tuple[int, int]:
+    path = params_path()
+    if not path.exists():
+        return RNN_CONFIG["n_d1"], RNN_CONFIG["n_d2"]
+    with path.open("rb") as f:
+        bundle = pickle.load(f)
+    params = bundle["params"] if isinstance(bundle, dict) and "params" in bundle else bundle
+    return params["J_d1"].shape[0], params["J_d2"].shape[0]
+
+
+_n_d1, _n_d2 = _striatal_sizes()
 suppress_d1 = [
     jnp.concatenate([jnp.full((_n_d1,), i), jnp.zeros((_n_d2,))])
     for i in d1_suppress_strength

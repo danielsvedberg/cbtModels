@@ -23,7 +23,11 @@ os.makedirs(PNR_DIR, exist_ok=True)
 
 
 def load_bundle():
-    """Load params + config, rebuilding config for legacy (params-only) bundles."""
+    """Load params + config, rebuilding config for legacy (params-only) bundles.
+
+    These probes call batched_rnn directly rather than cbtl.evaluate, so the
+    test-time noise level has to be applied to the config here.
+    """
     params_path = cfg.params_path()
     try:
         with params_path.open("rb") as f:
@@ -33,7 +37,9 @@ def load_bundle():
         return None, None
 
     if isinstance(bundle, dict) and "params" in bundle and "config" in bundle:
-        return bundle["params"], bundle["config"]
+        config = dict(bundle["config"])
+        config["noise_std"] = cfg.TEST_CONFIG["noise_std"]
+        return bundle["params"], config
 
     params = bundle
     _, config = cbtl.init_params(
@@ -49,7 +55,7 @@ def load_bundle():
         n_med=params["J_med_w1"].shape[0] * 2,
         n_input=1,
         n_output=1,
-        noise_std=cfg.RNN_CONFIG["noise_std"],
+        noise_std=cfg.TEST_CONFIG["noise_std"],
     )
     return params, config
 

@@ -16,11 +16,17 @@ import plotting_functions as pf
 
 
 def load_bundle():
-    """Load params + config, rebuilding config for legacy (params-only) bundles."""
+    """Load params + config, rebuilding config for legacy (params-only) bundles.
+
+    These experiments call batched_rnn directly rather than cbtl.evaluate, so the
+    test-time noise level has to be applied to the config here.
+    """
     with cfg.params_path().open("rb") as f:
         bundle = pkl.load(f)
     if isinstance(bundle, dict) and "params" in bundle and "config" in bundle:
-        return bundle["params"], bundle["config"]
+        config = dict(bundle["config"])
+        config["noise_std"] = cfg.TEST_CONFIG["noise_std"]
+        return bundle["params"], config
 
     params = bundle
     _, config = cbtl.init_params(
@@ -36,7 +42,7 @@ def load_bundle():
         n_med=params["J_med_w1"].shape[0] * 2,
         n_input=1,
         n_output=1,
-        noise_std=cfg.RNN_CONFIG["noise_std"],
+        noise_std=cfg.TEST_CONFIG["noise_std"],
     )
     return params, config
 
@@ -58,16 +64,22 @@ def _temporal_mask(T):
 
 
 def _run_condition(params, config, inputs, stim_profile, n_seeds, seed=0):
-    """Run one opto condition across n_seeds. Returns (ys, xs) stacked over seeds.
+    """Run one opto condition across n_seeds. Returns (ys, xs, actions).
 
-    ys: (n_seeds, T, 1)
+    ys: (n_seeds, T, 1) raw output probabilities
     xs: tuple of (n_seeds, T, N) arrays (one per state area)
+    actions: (n_seeds, T, 1) binary actions sampled from ys, as in cbtl.evaluate
+
+    Response times must be read off the sampled actions: ys is a per-timestep
+    probability that need not reach the 0.5 detection threshold.
     """
     batch_inputs = jnp.repeat(inputs, n_seeds, axis=0)
     batch_stim = jnp.repeat(stim_profile[None, :, :], n_seeds, axis=0)
-    rng_keys = jr.split(jr.PRNGKey(seed), n_seeds)
+    rng_key, action_key = jr.split(jr.PRNGKey(seed))
+    rng_keys = jr.split(rng_key, n_seeds)
     ys, xs = cbtl.batched_rnn(params, config, batch_inputs, batch_stim, rng_keys)
-    return ys, xs
+    actions = jr.bernoulli(action_key, p=ys).astype(ys.dtype)
+    return ys, xs, actions
 
 
 def _base_inputs():
@@ -87,7 +99,7 @@ def run_opto_demo(params, config, n_seeds=200,
                   inh_d1=-1.0, inh_d2=-1.0, stim_d1=1.0, stim_d2=1.0):
     """Control + representative inh/stim of dSPN and iSPN for the demo plots.
 
-    Returns (opto_ys, opto_xs) as 5-element lists ordered:
+    Returns (opto_ys, opto_xs, opto_actions) as 5-element lists ordered:
         [control, inh dSPN, inh iSPN, stim dSPN, stim iSPN]
     matching what plot_opto_inh / plot_opto_stim expect.
     """
@@ -105,48 +117,53 @@ def run_opto_demo(params, config, n_seeds=200,
         ("stim iSPN", _stim_vector(params, stim_d2, "d2")),
     ]
 
-    opto_ys, opto_xs = [], []
+    opto_ys, opto_xs, opto_actions = [], [], []
     for idx, (label, vec) in enumerate(conditions):
         stim_profile = tmask * vec[None, :]  # (T, n_bg)
-        ys, xs = _run_condition(params, config, inputs, stim_profile, n_seeds, seed=idx)
+        ys, xs, actions = _run_condition(params, config, inputs, stim_profile, n_seeds, seed=idx)
         opto_ys.append(ys)
         opto_xs.append(xs)
+        opto_actions.append(actions)
         print(f"  [opto] {label:10s} done ({n_seeds} seeds)")
-    return opto_ys, opto_xs
+    return opto_ys, opto_xs, opto_actions
 
 
 def run_opto_sweep(params, config, n_seeds=200):
     """Full strength sweep over cfg.spatial_stim_list.
 
-    Returns (opto_ys, opto_xs) lists aligned with cfg.stim_labels /
+    Returns (opto_ys, opto_xs, opto_actions) lists aligned with cfg.stim_labels /
     cfg.stim_strengths, as plot_opto expects.
     """
     inputs = _base_inputs()
     T = cfg.TASK_CONFIG["t_total"]
     tmask = _temporal_mask(T)[:, None]
 
-    opto_ys, opto_xs = [], []
+    opto_ys, opto_xs, opto_actions = [], [], []
     for idx, (stim_vec, label, strength) in enumerate(
         zip(cfg.spatial_stim_list, cfg.stim_labels, cfg.stim_strengths)
     ):
         stim_profile = tmask * stim_vec[None, :]
-        ys, xs = _run_condition(params, config, inputs, stim_profile, n_seeds, seed=idx)
+        ys, xs, actions = _run_condition(params, config, inputs, stim_profile, n_seeds, seed=idx)
         opto_ys.append(ys)
         opto_xs.append(xs)
+        opto_actions.append(actions)
         print(f"  [opto-sweep] {label:10s} strength={float(strength): .3f} done")
-    return opto_ys, opto_xs
+    return opto_ys, opto_xs, opto_actions
 
 
 def make_all_opto_plots(params, config, demo_seeds=200, sweep_seeds=120):
     """Run both opto experiments and emit every opto plot."""
     print("Running opto demo conditions...")
-    demo_ys, demo_xs = run_opto_demo(params, config, n_seeds=demo_seeds)
-    pf.plot_opto_inh(demo_ys, demo_xs, None, newT=cfg.TASK_CONFIG["t_total"])
-    pf.plot_opto_stim(demo_ys, demo_xs, None, newT=cfg.TASK_CONFIG["t_total"])
+    demo_ys, demo_xs, demo_actions = run_opto_demo(params, config, n_seeds=demo_seeds)
+    pf.plot_opto_inh(demo_ys, demo_xs, None, newT=cfg.TASK_CONFIG["t_total"],
+                     opto_actions=demo_actions)
+    pf.plot_opto_stim(demo_ys, demo_xs, None, newT=cfg.TASK_CONFIG["t_total"],
+                      opto_actions=demo_actions)
 
     print("Running opto strength sweep...")
-    sweep_ys, sweep_xs = run_opto_sweep(params, config, n_seeds=sweep_seeds)
-    pf.plot_opto(sweep_xs, None, sweep_ys, newT=cfg.TASK_CONFIG["t_total"])
+    sweep_ys, sweep_xs, sweep_actions = run_opto_sweep(params, config, n_seeds=sweep_seeds)
+    pf.plot_opto(sweep_xs, None, sweep_ys, newT=cfg.TASK_CONFIG["t_total"],
+                 opto_actions=sweep_actions)
     print("Opto plots complete.")
 
 

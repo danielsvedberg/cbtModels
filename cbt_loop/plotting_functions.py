@@ -49,6 +49,7 @@ def plot_loss(losses_nm):
     ax.legend()
     plt.tight_layout()
     save_fig(fig, 'loss_curve')
+    plt.close(fig)
 
 
 def plot_output(all_ys):
@@ -77,6 +78,7 @@ def plot_output(all_ys):
     plt.title(f'Output (mean ± SEM)')
     plt.tight_layout()
     save_fig(fig, 'output_activity')
+    plt.close(fig)
 
 
 def plot_activity_by_area(all_xs, all_zs=None):
@@ -112,6 +114,7 @@ def plot_activity_by_area(all_xs, all_zs=None):
     plt.suptitle('Aligned to trial start')
     plt.tight_layout()
     save_fig(fig, 'activity_by_area')
+    plt.close(fig)
 
 
 def plot_cue_algn_activity(all_xs, noiseless=False, ys=None):
@@ -262,6 +265,7 @@ def plot_cue_algn_activity(all_xs, noiseless=False, ys=None):
     plt.suptitle('Aligned to cue')
     plt.tight_layout()
     save_fig(fig, 'cue_aligned_activity', dpi=150)
+    plt.close(fig)
 
 
 def plot_response_times(valid_response_times):
@@ -284,8 +288,8 @@ def plot_response_times(valid_response_times):
     plt.xlim(0, max_response_time)
     plt.xticks([0, 3])
     plt.axvspan(3, x_axis[-1], color='green', alpha=0.2)
-    plt.show()
     save_fig(fig, 'response_times_hist')
+    plt.close(fig)
     # Sort the response times
     sorted_response_times = jnp.sort(valid_response_times)
 
@@ -304,8 +308,8 @@ def plot_response_times(valid_response_times):
     plt.ylabel('Proportion (CDF)')
     plt.title(' ')
     plt.tight_layout()
-    plt.show()
     save_fig(fig, 'response_times_cdf')
+    plt.close(fig)
 
 
 def truncate_colormap(cmap, minval=0.0, maxval=1.0, alpha=1, n=100):
@@ -479,6 +483,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
     ax.axvspan(beh_start_t, x_axis[-1], color='green', alpha=0.2)
     plt.tight_layout()
     save_fig(fig, 'clue_aligned_binned_responses')
+    plt.close(fig)
 
     # Plot activity in each brain area for different response time bins (mean ± SEM).
     # pkaD1 / pkaD2 are included as their own dSPN/iSPN excitability rows.
@@ -535,6 +540,7 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
 
     plt.tight_layout()
     save_fig(fig, 'binned_responses_by_area')
+    plt.close(fig)
 
     #plot the ratio of d1/d2 activity
     fig, axs = plt.subplots(1, 1, figsize=(1.8, 1.5), sharex=True)
@@ -589,9 +595,30 @@ def plot_binned_responses(all_ys, all_xs, all_zs=None, all_actions=None):
     #ax.set_yscale('symlog')
     plt.tight_layout()
     save_fig(fig, 'binned_responses_D1D2ratio')
+    plt.close(fig)
 
 
-def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_name, newT):
+def _response_cdf(detect_arr, cue_start):
+    """Response-time CDF over *all* trials, responders and non-responders alike.
+
+    Non-responding trials are kept in the denominator (they sort to the end as
+    infinite response times), so the curve plateaus at the fraction of trials
+    that responded instead of always reaching 1.0. The remaining gap up to 1.0
+    is the no-response fraction.
+
+    Returns (sorted response times, cdf) — both empty if nothing responded.
+    """
+    rts = np.asarray(cl.get_response_times_opto(detect_arr, cue_start=cue_start,
+                                                exclude_nan=False))
+    n_total = len(rts)
+    responded = np.sort(rts[~np.isnan(rts)])
+    if n_total == 0 or len(responded) == 0:
+        return responded, np.empty(0)
+    return responded, np.arange(1, len(responded) + 1) / n_total
+
+
+def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_name, newT,
+                    opto_actions=None):
     """Shared body for the opto inhibition / stimulation demo figures.
 
     opto_ys / opto_xs are 3-element lists [control, perturb dSPN, perturb iSPN].
@@ -599,15 +626,16 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
     brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
                    'Medulla', 'pkaD1', 'pkaD2']
 
+    # Sampled actions cross threshold; the raw probability output may not.
+    detect = opto_actions if opto_actions is not None else opto_ys
+
     # CDF of response times.
     fig = plt.figure(figsize=(1.8, 1.8))
     plotted_any = False
     for stim_idx, label in enumerate(label_list):
-        rts = cl.get_response_times_opto(opto_ys[stim_idx], cue_start=cs.opto_tstart, exclude_nan=True)
-        sorted_rts = jnp.sort(rts)
+        sorted_rts, cdf = _response_cdf(detect[stim_idx], cs.opto_tstart)
         if len(sorted_rts) == 0:
             continue
-        cdf = jnp.arange(1, len(sorted_rts) + 1) / len(sorted_rts)
         plt.plot(sorted_rts, cdf, marker='o', color=colors[stim_idx], alpha=0.7, label=label)
         plotted_any = True
     plt.axvspan(3, 6, color='green', alpha=0.2)
@@ -620,6 +648,7 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
         plt.legend(fontsize=6)
     plt.tight_layout()
     save_fig(fig, cdf_name)
+    plt.close(fig)
 
     # Per-area activity traces.
     cue_start_t = 0
@@ -658,13 +687,15 @@ def _plot_opto_demo(opto_ys, opto_xs, label_list, colors, title, cdf_name, area_
             ax.set_ylabel('activity (AU)')
     plt.tight_layout()
     save_fig(fig, area_name)
+    plt.close(fig)
 
 
-def plot_opto_inh(opto_ys, opto_xs, opto_zs=None, newT=900):
+def plot_opto_inh(opto_ys, opto_xs, opto_zs=None, newT=900, opto_actions=None):
     """Control vs. inhibition of dSPN / iSPN.
 
-    Expects opto_ys / opto_xs ordered
+    Expects opto_ys / opto_xs / opto_actions ordered
     [control, inh dSPN, inh iSPN, stim dSPN, stim iSPN]; only the first 3 are used.
+    Response times are detected from ``opto_actions`` when supplied.
     ``opto_zs`` is accepted for backward compatibility and ignored.
     """
     _plot_opto_demo(
@@ -675,14 +706,16 @@ def plot_opto_inh(opto_ys, opto_xs, opto_zs=None, newT=900):
         cdf_name='response_times_cdf_opto_inh',
         area_name='opto_inh_demo',
         newT=newT,
+        opto_actions=None if opto_actions is None else opto_actions[0:3],
     )
 
 
-def plot_opto_stim(opto_ys, opto_xs, opto_zs=None, newT=900):
+def plot_opto_stim(opto_ys, opto_xs, opto_zs=None, newT=900, opto_actions=None):
     """Control vs. stimulation of dSPN / iSPN.
 
-    Expects opto_ys / opto_xs ordered
+    Expects opto_ys / opto_xs / opto_actions ordered
     [control, inh dSPN, inh iSPN, stim dSPN, stim iSPN]; uses control + last 2.
+    Response times are detected from ``opto_actions`` when supplied.
     ``opto_zs`` is accepted for backward compatibility and ignored.
     """
     _plot_opto_demo(
@@ -693,15 +726,20 @@ def plot_opto_stim(opto_ys, opto_xs, opto_zs=None, newT=900):
         cdf_name='response_times_cdf_opto_stim',
         area_name='opto_stim_demo',
         newT=newT,
+        opto_actions=None if opto_actions is None else [opto_actions[0]] + list(opto_actions[3:5]),
     )
 
 
-def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
+def plot_opto(opto_xs, opto_zs, opto_ys, newT=900, opto_actions=None):
     """Full opto strength sweep: response-time CDFs and per-area activity.
 
     opto_xs / opto_ys are lists aligned with cs.stim_labels / cs.stim_strengths.
+    Response times are detected from ``opto_actions`` when supplied.
     ``opto_zs`` is accepted for backward compatibility and ignored.
     """
+    # Sampled actions cross threshold; the raw probability output may not.
+    detect = opto_actions if opto_actions is not None else opto_ys
+
     sl = np.array(cs.stim_labels)
     cols = np.unique(sl)
     n_stims = len(cols)
@@ -718,23 +756,24 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
     ope = (cs.opto_end - cs.opto_tstart) / 100
 
     cmap = plt.cm.get_cmap('coolwarm')
-    min_stim = float(np.min(cs.stim_strengths))
-    max_stim = float(np.max(cs.stim_strengths))
+    # Symmetric about 0 so coolwarm's white midpoint stays on zero strength and a
+    # given colour means the same magnitude in every panel, even when the
+    # inhibition and excitation sweeps span different ranges.
+    max_stim = float(np.max(np.abs(cs.stim_strengths)))
+    min_stim = -max_stim
     norm = matplotlib.colors.Normalize(vmin=min_stim, vmax=max_stim)
 
     # Response-time CDFs per stim family.
     fig, axs = plt.subplots(1, 4, figsize=(5.1, 1.5), sharex=True, sharey=True)
     for opidx, colname in enumerate(cols):
         opfilter = np.where(sl == colname)[0]
-        ys_sub = [opto_ys[i] for i in opfilter]
+        ys_sub = [detect[i] for i in opfilter]
         stim_mags = [cs.stim_strengths[i] for i in opfilter]
         ax = axs[opidx]
         for magidx, opmag in enumerate(stim_mags):
-            rts = cl.get_response_times_opto(ys_sub[magidx], cue_start=cs.opto_tstart, exclude_nan=True)
-            sorted_rts = jnp.sort(rts)
+            sorted_rts, cdf = _response_cdf(ys_sub[magidx], cs.opto_tstart)
             if len(sorted_rts) == 0:
                 continue
-            cdf = jnp.arange(1, len(sorted_rts) + 1) / len(sorted_rts)
             ax.plot(sorted_rts, cdf, color=cmap(norm(opmag)))
         ax.axvspan(3, 6, color='green', alpha=0.2)
         ax.axvspan(ops, ope, color='blue', alpha=0.2)
@@ -748,6 +787,7 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
         ax.set_xlim(0, 6)
     plt.tight_layout()
     save_fig(fig, 'response_times_cdf_opto')
+    plt.close(fig)
 
     # Per-area activity sweep.
     fig, axs = plt.subplots(len(brain_areas), 4, figsize=(5.1, 0.9 * len(brain_areas)),
@@ -788,6 +828,7 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
     ax.set_xlabel('time (s)')
     plt.tight_layout()
     save_fig(fig, 'opto_demo')
+    plt.close(fig)
 
     # Standalone colorbar for opto strength.
     fig, ax = plt.subplots(1, 1, figsize=(5, 0.675))
@@ -795,6 +836,7 @@ def plot_opto(opto_xs, opto_zs, opto_ys, newT=900):
     colorbar.set_label('Opto strength')
     plt.tight_layout()
     save_fig(fig, 'opto_strength_colorbar')
+    plt.close(fig)
 
 
 def plot_d1d2ratio_SNc_correlogram(d1d2_ratio, all_xs, response_times):
@@ -862,6 +904,7 @@ def plot_d1d2ratio_SNc_correlogram(d1d2_ratio, all_xs, response_times):
     # ax.set_title('D1:D2 ratio vs. Response time')
     plt.tight_layout()
     save_fig(fig, 'd1d2_ratio_vs_SNc')
+    plt.close(fig)
 
 
 def plot_d1d2ratio_slope_correlogram(all_xs, response_times):
@@ -912,8 +955,8 @@ def plot_d1d2ratio_slope_correlogram(all_xs, response_times):
     # ax.set_title('D1:D2 ratio vs. Response time')
     ax.set_ylabel('dSPN / iSPN activity')
     plt.tight_layout()
-    plt.show()
     save_fig(fig, 'd1d2_ratio_vs_ramp_slopes')
+    plt.close(fig)
 
 
 def plot_ratio_rt_correlogram(d1d2_ratio, response_times):
@@ -956,8 +999,8 @@ def plot_ratio_rt_correlogram(d1d2_ratio, response_times):
     ax.set_xlabel('response time after cue (s)')
     # ax.set_title('D1:D2 ratio vs. Response time')
     plt.tight_layout()
-    plt.show()
     save_fig(fig, 'd1d2_ratio_vs_response_time')
+    plt.close(fig)
 
 
 def plot_loss_function():
@@ -973,6 +1016,7 @@ def plot_loss_function():
     ax.set_xticks([0, 3, 6])
     plt.tight_layout()
     save_fig(fig, 'loss_function')
+    plt.close(fig)
 
 
 def plot_loss_function_adaptive():
@@ -1019,8 +1063,8 @@ def plot_loss_function_adaptive():
     #ax.set_ylabel('output target')
     ax.set_xticks([0, 3, 6])
     plt.tight_layout()
-    plt.show()
     save_fig(fig, 'adaptive_loss_function')
+    plt.close(fig)
 
 
 def save_fig(fig, name, dpi=900):
@@ -1079,6 +1123,7 @@ def plot_binned_pnr(all_ys, all_xs, all_zs=None, conditions=None, xlabel='', tit
     
     plt.tight_layout()
     save_fig(fig_y, f'{filename}_outputs')
+    plt.close(fig_y)
     
     # 2. Plot Brain Area Activities (incl. Medulla and D1/D2 PKA excitability rows)
     brain_areas = ['Cortex', 'D1', 'D2', 'SNc', 'GPe', 'STN', 'SNr', 'SC', 'Thalamus',
@@ -1126,6 +1171,7 @@ def plot_binned_pnr(all_ys, all_xs, all_zs=None, conditions=None, xlabel='', tit
 
     plt.tight_layout()
     save_fig(fig_a, f'{filename}_areas')
+    plt.close(fig_a)
 
     # 3. Plot D1/D2 Ratio Plot
     fig_ratio, ax_ratio = plt.subplots(figsize=(1.8, 1.5))
@@ -1158,6 +1204,7 @@ def plot_binned_pnr(all_ys, all_xs, all_zs=None, conditions=None, xlabel='', tit
     ax_ratio.set_xticks([0, 1, 2])
     plt.tight_layout()
     save_fig(fig_ratio, f'{filename}_ratio')
+    plt.close(fig_ratio)
 
 def plot_colorbar(vmin, vmax, cmap_name, label, filename, ticks=None, ticklabels=None):
     """
@@ -1179,3 +1226,4 @@ def plot_colorbar(vmin, vmax, cmap_name, label, filename, ticks=None, ticklabels
         
     plt.tight_layout()
     save_fig(fig, filename)
+    plt.close(fig)

@@ -64,53 +64,63 @@ def init_params(
     """Initialize multiregion CBT loop params and runtime config."""
     skeys = jr.split(rng_key, 41)
 
+    # Fan-in scaling. Sign-constrained pathways (those wrapped in exc()/inh() at
+    # runtime) sum same-signed weights against non-negative rates, so nothing
+    # cancels and the summed drive would grow as sqrt(fan_in) under 1/sqrt(n)
+    # scaling — units downstream of a large population saturate nln immediately.
+    # They scale by 1/fan_in instead, keeping the mean drive O(1) in area size.
+    # Free-sign pathways (J_c, J_t, J_sc, B_cue_c) have zero-mean weights whose
+    # terms do cancel, so the variance-preserving 1/sqrt(n) is correct there.
+    # The pacer vectors (P_snc, P_snr, P_gpe) are per-unit biases, not
+    # projections — no fan-in sum — so they keep their existing spread.
     params = {
         "J_c": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[2], (n_c, n_c)),
-        "J_d1": (g_bg / math.sqrt(n_d1)) * jr.normal(skeys[0], (n_d1, n_d1)),
-        "J_d2": (g_bg / math.sqrt(n_d2)) * jr.normal(skeys[8], (n_d2, n_d2)),
+        "J_d1": (g_bg / n_d1) * jr.normal(skeys[0], (n_d1, n_d1)),
+        "J_d2": (g_bg / n_d2) * jr.normal(skeys[8], (n_d2, n_d2)),
         # Pacemaker vectors (no within-area recurrence for SNc/SNr).
         "P_snc": (g_nm / math.sqrt(n_snc)) * jr.normal(skeys[7], (n_snc,)),
-        "J_gpe": (g_bg / math.sqrt(n_gpe)) * jr.normal(skeys[19], (n_gpe, n_gpe)),
-        "J_stn": (g_bg / math.sqrt(n_stn)) * jr.normal(skeys[20], (n_stn, n_stn)),
+        "J_gpe": (g_bg / n_gpe) * jr.normal(skeys[19], (n_gpe, n_gpe)),
+        "J_stn": (g_bg / n_stn) * jr.normal(skeys[20], (n_stn, n_stn)),
         "P_snr": (g_bg / math.sqrt(n_snr)) * jr.normal(skeys[18], (n_snr,)),
         "P_gpe": (g_bg / math.sqrt(n_gpe)) * jr.normal(skeys[34], (n_gpe,)),
         "J_t": (g_bg / math.sqrt(n_t)) * jr.normal(skeys[5], (n_t, n_t)),
         "B_cue_c": (1 / math.sqrt(n_input)) * jr.normal(skeys[3], (n_c, n_input)),
-        "B_t_c": (g_bg / math.sqrt(n_t)) * jr.normal(skeys[4], (n_c, n_t)),
-        "B_c_t": (1 / math.sqrt(n_c)) * jr.normal(skeys[29], (n_t, n_c)),
-        "B_c_d1": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[1], (n_d1, n_c)),
-        "B_c_d2": (g_bg / math.sqrt(n_c)) * jr.normal(skeys[12], (n_d2, n_c)),
-        "B_c_snc": (1 / math.sqrt(n_c)) * jr.normal(skeys[32], (n_snc, n_c)),
-        "B_stn_snc": (1 / math.sqrt(n_stn)) * jr.normal(skeys[9], (n_snc, n_stn)),
-        "B_d1_snc": (1 / math.sqrt(n_d1)) * jr.normal(skeys[17], (n_snc, n_d1)),
-        "B_d2_snc": (1 / math.sqrt(n_d2)) * jr.normal(skeys[28], (n_snc, n_d2)),
-        "B_d1_snr": (1 / math.sqrt(n_d1)) * jr.normal(skeys[22], (n_snr, n_d1)),
-        "B_d2_gpe": (1 / math.sqrt(n_d2)) * jr.normal(skeys[24], (n_gpe, n_d2)),
-        "B_stn_gpe": (1 / math.sqrt(n_stn)) * jr.normal(skeys[27], (n_gpe, n_stn)),
-        "B_gpe_stn": (1 / math.sqrt(n_gpe)) * jr.normal(skeys[25], (n_stn, n_gpe)),
-        "B_gpe_snr": (1 / math.sqrt(n_gpe)) * jr.normal(skeys[40], (n_snr, n_gpe)),  # GPe → SNr (inh)
-        "B_c_stn": (1 / math.sqrt(n_c)) * jr.normal(skeys[26], (n_stn, n_c)),  # hyperdirect pathway
-        "B_stn_snr": (1 / math.sqrt(n_stn)) * jr.normal(skeys[23], (n_snr, n_stn)),
-        "B_snr_t": (1 / math.sqrt(n_snr)) * jr.normal(skeys[6], (n_t, n_snr)),
+        "B_t_c": (g_bg / n_t) * jr.normal(skeys[4], (n_c, n_t)),
+        "B_c_t": (1 / n_c) * jr.normal(skeys[29], (n_t, n_c)),
+        "B_c_d1": (g_bg / n_c) * jr.normal(skeys[1], (n_d1, n_c)),
+        "B_c_d2": (g_bg / n_c) * jr.normal(skeys[12], (n_d2, n_c)),
+        "B_c_snc": (1 / n_c) * jr.normal(skeys[32], (n_snc, n_c)),
+        "B_stn_snc": (1 / n_stn) * jr.normal(skeys[9], (n_snc, n_stn)),
+        "B_d1_snc": (1 / n_d1) * jr.normal(skeys[17], (n_snc, n_d1)),
+        "B_d2_snc": (1 / n_d2) * jr.normal(skeys[28], (n_snc, n_d2)),
+        "B_d1_snr": (1 / n_d1) * jr.normal(skeys[22], (n_snr, n_d1)),
+        "B_d2_gpe": (1 / n_d2) * jr.normal(skeys[24], (n_gpe, n_d2)),
+        "B_stn_gpe": (1 / n_stn) * jr.normal(skeys[27], (n_gpe, n_stn)),
+        "B_gpe_stn": (1 / n_gpe) * jr.normal(skeys[25], (n_stn, n_gpe)),
+        "B_gpe_snr": (1 / n_gpe) * jr.normal(skeys[40], (n_snr, n_gpe)),  # GPe → SNr (inh)
+        "B_c_stn": (1 / n_c) * jr.normal(skeys[26], (n_stn, n_c)),  # hyperdirect pathway
+        "B_stn_snr": (1 / n_stn) * jr.normal(skeys[23], (n_snr, n_stn)),
+        "B_snr_t": (1 / n_snr) * jr.normal(skeys[6], (n_t, n_snr)),
         # Superior colliculus. J_sc is free-sign (unconstrained recurrence).
         # skeys[39] is the new slot; skeys[34] is taken by P_gpe.
         "J_sc":     (g_bg / math.sqrt(n_sc)) * jr.normal(skeys[39], (n_sc, n_sc)),
-        "B_c_sc":   (1 / math.sqrt(n_c))   * jr.normal(skeys[35], (n_sc, n_c)),
-        "B_snr_sc": (1 / math.sqrt(n_snr)) * jr.normal(skeys[36], (n_sc, n_snr)),
-        "B_sc_t":   (1 / math.sqrt(n_sc))  * jr.normal(skeys[37], (n_t,  n_sc)),
-        "B_sc_med": (1 / math.sqrt(n_sc))  * jr.normal(skeys[38], (n_med // 2, n_sc)),
-        "m_d1": (1 / math.sqrt(n_snc)) * jr.normal(skeys[10], (1, n_snc)),
-        "m_d2": (1 / math.sqrt(n_snc)) * jr.normal(skeys[11], (1, n_snc)),
+        "B_c_sc":   (1 / n_c)   * jr.normal(skeys[35], (n_sc, n_c)),
+        "B_snr_sc": (1 / n_snr) * jr.normal(skeys[36], (n_sc, n_snr)),
+        "B_sc_t":   (1 / n_sc)  * jr.normal(skeys[37], (n_t,  n_sc)),
+        "B_sc_med": (1 / n_sc)  * jr.normal(skeys[38], (n_med // 2, n_sc)),
+        "m_d1": (1 / n_snc) * jr.normal(skeys[10], (1, n_snc)),
+        "m_d2": (1 / n_snc) * jr.normal(skeys[11], (1, n_snc)),
         # Lateral inhibition between D1 and D2 populations.
         # "B_d1_d2": (g_bg / math.sqrt(n_d1)) * jr.normal(skeys[16], (n_d2, n_d1)),  # D1 → D2 (inh)
         # "B_d2_d1": (g_bg / math.sqrt(n_d2)) * jr.normal(skeys[31], (n_d1, n_d2)),  # D2 → D1 (inh)
         # Medullary area: two E/I pairs (E0,I0) and (E1,I1) coupled reciprocally.
         # Each 2×2 block: col 0 = from E (exc), col 1 = from I (inh).
-        "J_med_w1": (g_bg / math.sqrt(2)) * jr.normal(skeys[13], (2, 2)),  # within pair 1
-        "J_med_w2": (g_bg / math.sqrt(2)) * jr.normal(skeys[21], (2, 2)),  # within pair 2
-        "J_med_x":  (g_bg / math.sqrt(2)) * jr.normal(skeys[30], (2, 2)),  # cross-pair
-        "B_c_med": (1 / math.sqrt(n_c)) * jr.normal(skeys[14], (2, n_c)),  # cortex → E units only
-        "C_med": (1 / math.sqrt(n_med)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
+        "J_med_w1": (g_bg / 2) * jr.normal(skeys[13], (2, 2)),  # within pair 1
+        "J_med_w2": (g_bg / 2) * jr.normal(skeys[21], (2, 2)),  # within pair 2
+        "J_med_x":  (g_bg / 2) * jr.normal(skeys[30], (2, 2)),  # cross-pair
+        "B_c_med": (1 / n_c) * jr.normal(skeys[14], (2, n_c)),  # cortex → E units only
+        # Reads from E units only, so fan-in is n_med // 2 (was scaled by n_med).
+        "C_med": (1 / (n_med // 2)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
         #"rb": jnp.abs((1 / math.sqrt(n_med)) * jr.normal(skeys[16], (n_output,))),
         # Trainable initial states (resting/baseline activity for each area).
         "x_c0":   jnp.ones((n_c,))   * 0.1,
@@ -295,6 +305,22 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     tau_sc  = config.get("tau_sc",  5.0)
     tau_med = config.get("tau_med", 5.0)
 
+    # OU noise scaling: stationary variance is tau-independent, so each area
+    # scales by its own tau rather than sharing the cortical one.
+    def _noise_coef(tau):
+        return noise_std / jnp.sqrt(2.0 * tau)
+
+    coef_c   = _noise_coef(tau_c)
+    coef_d1  = _noise_coef(tau_d1)
+    coef_d2  = _noise_coef(tau_d2)
+    coef_t   = _noise_coef(tau_t)
+    coef_snr = _noise_coef(tau_snr)
+    coef_gpe = _noise_coef(tau_gpe)
+    coef_stn = _noise_coef(tau_stn)
+    coef_snc = _noise_coef(tau_snc)
+    coef_sc  = _noise_coef(tau_sc)
+    coef_med = _noise_coef(tau_med)
+
     n_steps = inputs.shape[0]
     n_d1_cells = j_d1.shape[0]
     n_d2_cells = j_d2.shape[0]
@@ -307,20 +333,19 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         stim_d1 = stim_t[:n_d1_cells]
         stim_d2 = stim_t[n_d1_cells:]
 
-        # add noise
+        # add noise: OU scaling per area, using that area's own tau so the
+        # stationary noise variance is the same everywhere regardless of tau
         rng_d1, rng_d2, rng_c, rng_t, rng_snr, rng_sc, rng_gpe, rng_stn, rng_snc, rng_med = jr.split(step_rng, 10)
-        coef = noise_std / jnp.sqrt(2.0 * tau_c)
-        x_d1 = x_d1 + coef * jr.normal(rng_d1, x_d1.shape)
-        x_d2 = x_d2 + coef * jr.normal(rng_d2, x_d2.shape)
-        x_c = x_c + coef * jr.normal(rng_c, x_c.shape)
-        x_t = x_t + coef * jr.normal(rng_t, x_t.shape)
-        x_snr = x_snr + coef * jr.normal(rng_snr, x_snr.shape)
-        x_sc = x_sc + coef * jr.normal(rng_sc, x_sc.shape)
-        x_gpe = x_gpe + coef * jr.normal(rng_gpe, x_gpe.shape)
-        x_stn = x_stn + coef * jr.normal(rng_stn, x_stn.shape)
-        coef_snc = noise_std / jnp.sqrt(2.0 * tau_snc)
+        x_d1 = x_d1 + coef_d1 * jr.normal(rng_d1, x_d1.shape)
+        x_d2 = x_d2 + coef_d2 * jr.normal(rng_d2, x_d2.shape)
+        x_c = x_c + coef_c * jr.normal(rng_c, x_c.shape)
+        x_t = x_t + coef_t * jr.normal(rng_t, x_t.shape)
+        x_snr = x_snr + coef_snr * jr.normal(rng_snr, x_snr.shape)
+        x_sc = x_sc + coef_sc * jr.normal(rng_sc, x_sc.shape)
+        x_gpe = x_gpe + coef_gpe * jr.normal(rng_gpe, x_gpe.shape)
+        x_stn = x_stn + coef_stn * jr.normal(rng_stn, x_stn.shape)
         x_snc = x_snc + coef_snc * jr.normal(rng_snc, x_snc.shape)
-        x_med = x_med + coef * jr.normal(rng_med, x_med.shape)
+        x_med = x_med + coef_med * jr.normal(rng_med, x_med.shape)
 
         # cortex
         x_c = (1.0 - (1.0 / tau_c)) * x_c + (1.0 / tau_c) * (j_c @ x_c)
