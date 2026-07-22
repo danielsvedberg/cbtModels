@@ -18,7 +18,7 @@ def _run(name, fn):
 
 
 def main():
-    _run("train_pavlovian", train_pavlovian.main)
+    #_run("train_pavlovian", train_pavlovian.main)
     _run("train_hybrid", train_hybrid.main)
     _run("test_hybrid", test_hybrid.main)
     _run("train_from_hybrid", train_from_hybrid.main)

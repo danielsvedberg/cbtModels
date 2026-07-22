@@ -13,24 +13,24 @@ SEED_CONFIG = {
 
 RNN_CONFIG = {
     # Cortex excitatory pool split into two PT-like populations (Economo 2018).
-    "n_c_U": 10,
-    "n_c_L": 10,
-    "n_c_inh": 4,
-    "n_d1": 8,
-    "n_d2": 8,
+    "n_c_U": 4,
+    "n_c_L": 4,
+    "n_c_inh": 2,
+    "n_d1": 4,
+    "n_d2": 4,
     "n_snc": 4,
     "n_snr": 6,
     "n_gpe": 6,
     "n_stn": 6,
     "n_sc": 6,
-    "n_t_exc": 5,
+    "n_t_exc": 8,
     "n_t_inh": 2,
     "n_med": 4,
     "n_input":1,
     "n_output":1,
     "g_bg": 1.0,
     "g_nm": 1.0,
-    "noise_std": 0.05,
+    "noise_std": 0.01,
 }
 
 OPTIM_CONFIG = {
@@ -38,24 +38,24 @@ OPTIM_CONFIG = {
 }
 
 RL_CONFIG = {
-    "entropy_coef": 0.01,
+    "entropy_coef": 0.01,  # small during supervised warm-up so the 0/1 transient stays crisp
     "baseline_momentum": 0.99,
-    "objective_mode": "log_reward",
+    "objective_mode": "loss",  # supervised BCE against the (brief-transient) target
     "brevity_coef": 0.5,
     "silence_coef": 0.5,
     "tail_coef": 0.5,
-    "asym_coef": 0.1,
+    "asym_coef": 0.0,
     "asym_margin": 0.5,
     "rest_pka_coef": 0.0,
     "rest_pka_margin": 0.9,
-    "pathway_floor_coef": 0.1,
+    "pathway_floor_coef": 0.0,
     "pathway_floor_min": 1.5,
-    "c_snc_floor_coef": 0.2,
+    "c_snc_floor_coef": 0.0,
     "c_snc_floor_min": 0.2,
     # GPe kept alive structurally by the pacer floor (gpe_pacer_min >= 1 in
     # cbt_rnn config), so the activity-floor penalty is disabled (coef=0). Raise
     # gpe_floor_coef to re-enable it as a soft push above the pacer-set level.
-    "gpe_floor_coef": 0.2,
+    "gpe_floor_coef": 0.0,
     "gpe_floor_min": 0.2,
     # Dead-area inactivity floor: require every region (Cortex, D1, D2, SNc, GPe,
     # SNr, Thalamus, Medulla) to keep mean activity above dead_area_min over the
@@ -63,14 +63,14 @@ RL_CONFIG = {
     # max(0, dead_area_min - mean_late_activity)^2; the summed hinge penalizes a
     # single silenced region. Latter-half window prevents gaming via a high
     # initial transient that then decays to zero.
-    "dead_area_coef": 0.2,
+    "dead_area_coef": 0.0,
     "dead_area_min": 0.1,
     # Dead-projection floor: keep every synaptic projection (each 2-D weight
     # matrix) from collapsing to zero. A projection is dead when its mean
     # absolute weight < dead_proj_floor / n_connections, i.e. its total |weight|
     # (L1) < dead_proj_floor; the penalty is dead_proj_coef * max(0,
     # dead_proj_floor - sum|W|)^2 summed over projections.
-    "dead_proj_coef": 0.2,
+    "dead_proj_coef": 0.0,
     "dead_proj_floor": 0.1,
 }
 
@@ -82,6 +82,10 @@ TASK_CONFIG = {
     "t_movement": 300,
     "t_total": 1000,
     "dt_ms": 10,
+    # Brief-transient supervised target: a 10-step pulse at the movement onset
+    # (t_start + t_cue + t_wait = 3s after cue) instead of the full 300-step
+    # window. Seeds a crisp, precisely-timed movement under objective_mode="loss".
+    "t_pulse": 10,
 }
 
 # Pavlovian conditioning task: a single cue arrives at a random time within
@@ -99,7 +103,7 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 20000,
+    "num_iters": 10000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
     # Training objective for train_pavlovian: "reinforce" (policy gradient) or

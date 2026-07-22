@@ -22,7 +22,7 @@ def _build_task(task_cfg):
         return stmt.hybrid_stmt(**task_kwargs)
     if mode == "pavlovian":
         return stmt.pavlovian_stmt(**task_kwargs)
-    return stmt.self_timed_movement_task(**task_kwargs)
+    return stmt.self_timed_movement_task(**task_kwargs, T_pulse=task_cfg.get("t_pulse"))
 
 
 def main():

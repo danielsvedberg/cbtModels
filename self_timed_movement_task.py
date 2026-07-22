@@ -9,9 +9,9 @@ from jax.nn import tanh
 
 
 def exc(w):
-    return jax.nn.sigmoid(w)
+    #return jax.nn.sigmoid(w)
     #return jnp.maximum(0, jnp.tanh(w))
-    #return jnp.abs(w)
+    return jnp.abs(w)
 def inh(w):
     return -exc(w)
     #return -jnp.abs(w)
@@ -106,10 +106,10 @@ def dead_projection_loss(params, coef, floor, dtype):
     return coef * loss
 
 
-def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=False):
+def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=False, T_pulse=None):
     """
     Simulate all possible input/output pairs for the self-timed movement task.
-    
+
     The task structure:
     - Cue starts at T_start and lasts T_cue
     - Movement window opens at T_start + T_cue + T_wait (minimum wait before movement allowed)
@@ -123,6 +123,10 @@ def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=F
     T_movement: duration of valid response window (in timesteps)
     T: total trial time (in timesteps)
     null_trial: if True, don't include cue (for null trials)
+    T_pulse: if set, the target is a brief T_pulse-timestep transient at the
+        movement-window onset (t_start + T_cue + T_wait) instead of the full
+        T_movement-wide plateau. Used to seed a crisp, precisely-timed movement
+        under a supervised (BCE) objective. None keeps the full-window target.
 
     Returns:
     inputs: (num_starts, T, 1), binary time series representing the cue
@@ -148,8 +152,10 @@ def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=F
         if not null_trial:
             inputs = jax.lax.dynamic_update_slice(inputs, jnp.ones((T_cue, 1)), (t_start, 0))
         
-        # Set target output to 1 during valid response window
-        outputs = jax.lax.dynamic_update_slice(outputs, jnp.ones((T_movement, 1)), (t_move_start, 0))
+        # Set target output to 1 during valid response window. With T_pulse set,
+        # emit only a brief T_pulse-step transient at the movement onset.
+        pulse_len = T_movement if T_pulse is None else T_pulse
+        outputs = jax.lax.dynamic_update_slice(outputs, jnp.ones((pulse_len, 1)), (t_move_start, 0))
 
         return inputs, outputs, mask
 

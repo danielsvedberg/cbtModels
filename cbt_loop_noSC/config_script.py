@@ -69,7 +69,7 @@ RL_CONFIG = {
     # absolute weight < dead_proj_floor / n_connections, i.e. its total |weight|
     # (L1) < dead_proj_floor; the penalty is dead_proj_coef * max(0,
     # dead_proj_floor - sum|W|)^2 summed over projections.
-    "dead_proj_coef": 1.0,
+    "dead_proj_coef": 0.0,
     "dead_proj_floor": 0.0001,
 }
 
