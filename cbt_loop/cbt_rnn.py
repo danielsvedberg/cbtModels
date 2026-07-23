@@ -1,4 +1,5 @@
 import math
+import numpy as np
 from pathlib import Path
 import sys
 
@@ -16,6 +17,12 @@ import self_timed_movement_task as stmt
 
 def exc(w):
     return stmt.exc(w)
+
+def ciel_floor(x, c, f):
+    # scale x (in [0, 1]) onto [f, c]: x=0 -> f (floor), x=1 -> c (ceiling)
+    return f + x * (c - f)
+
+
 
 
 def inh(w):
@@ -54,6 +61,93 @@ STATE_AREA_ORDER = (
 )
 
 
+# Thalamocortical recurrent blocks (all 17), used by the balanced-init option.
+_TC_EXC_BLOCKS = ["J_cU", "J_cL", "B_cU_cL", "B_cL_cU", "J_cU_ci", "J_cL_ci",
+                  "J_t_ee", "J_t_ie", "B_t_cU", "B_t_c_inh", "B_cU_t_exc", "B_cU_t_inh"]
+_TC_INH_BLOCKS = ["J_ci_cU", "J_ci_cL", "J_c_ii", "J_t_ei", "J_t_ii"]
+
+
+def _tc_recurrent_matrix(p, n_cU, n_cL, n_cI, n_tE, n_tI):
+    """Dense signed recurrent matrix of the cortico-thalamic loop (state order
+    cU, cL, cI, tE, tI) built from params (exc=|w|, inh=-|w|)."""
+    sizes = [("cU", n_cU), ("cL", n_cL), ("cI", n_cI), ("tE", n_tE), ("tI", n_tI)]
+    idx, off = {}, 0
+    for nm, sz in sizes:
+        idx[nm] = slice(off, off + sz); off += sz
+    W = np.zeros((off, off))
+    E = lambda k: np.abs(np.asarray(p[k]))
+    I = lambda k: -np.abs(np.asarray(p[k]))
+    W[idx["cU"], idx["cU"]] = E("J_cU");    W[idx["cU"], idx["cL"]] = E("B_cL_cU")
+    W[idx["cU"], idx["cI"]] = I("J_ci_cU"); W[idx["cU"], idx["tE"]] = E("B_t_cU")
+    W[idx["cL"], idx["cL"]] = E("J_cL");    W[idx["cL"], idx["cU"]] = E("B_cU_cL")
+    W[idx["cL"], idx["cI"]] = I("J_ci_cL")
+    W[idx["cI"], idx["cU"]] = E("J_cU_ci"); W[idx["cI"], idx["cL"]] = E("J_cL_ci")
+    W[idx["cI"], idx["cI"]] = I("J_c_ii");  W[idx["cI"], idx["tE"]] = E("B_t_c_inh")
+    W[idx["tE"], idx["tE"]] = E("J_t_ee");  W[idx["tE"], idx["tI"]] = I("J_t_ei")
+    W[idx["tE"], idx["cU"]] = E("B_cU_t_exc")
+    W[idx["tI"], idx["tE"]] = E("J_t_ie");  W[idx["tI"], idx["tI"]] = I("J_t_ii")
+    W[idx["tI"], idx["cU"]] = E("B_cU_t_inh")
+    return W
+
+
+def _balanced_thalamocortical_init(params, n_cU, n_cL, n_cI, n_tE, n_tI,
+                                   tau=10.0, target_rho=0.95, persistent_self_gain=None):
+    """Put the Dale's-law cortico-thalamic loop into a near-critical regime:
+      (1) matched 1/sqrt(n) scaling for the excitatory 1/n blocks (E->I, cross-area);
+      (2) per-row E/I balance -- each cell's local inhibition is rescaled to cancel
+          its total excitation (net recurrent drive -> 0, kills the mean-mode outlier);
+      (3) spectral-radius normalization -- scale all loop weights so the update map
+          J = (1-1/tau)I + (1/tau)W has spectral radius = target_rho.
+      (4) persistent activity (if persistent_self_gain is not None): set the
+          excitatory self-recurrence diagonal so each E unit is a leaky integrator
+          with effective self-gain = persistent_self_gain, i.e. it HOLDS a cue-evoked
+          bump across the delay. A positive unit feeding itself stays in nln's linear
+          band, so this survives the rectification that collapses distributed modes.
+    Only thalamocortical blocks are touched. Returns (params, realized_rho)."""
+    p = dict(params)
+    # (1) matched scaling: g/n -> g/sqrt(n) on the excitatory 1/n blocks.
+    for k, pre_n in (("J_cU_ci", n_cU), ("J_cL_ci", n_cL), ("J_t_ie", n_tE),
+                     ("B_t_cU", n_tE), ("B_t_c_inh", n_tE),
+                     ("B_cU_t_exc", n_cU), ("B_cU_t_inh", n_cU)):
+        p[k] = p[k] * math.sqrt(pre_n)
+    # (2) per-row balance: local inhibition cancels total excitation, per cell.
+    aE = lambda k: np.abs(np.asarray(p[k]))
+    exc_tot = {
+        "J_ci_cU": aE("J_cU").sum(1) + aE("B_cL_cU").sum(1) + aE("B_t_cU").sum(1),
+        "J_ci_cL": aE("J_cL").sum(1) + aE("B_cU_cL").sum(1),
+        "J_c_ii":  aE("J_cU_ci").sum(1) + aE("J_cL_ci").sum(1) + aE("B_t_c_inh").sum(1),
+        "J_t_ei":  aE("J_t_ee").sum(1) + aE("B_cU_t_exc").sum(1),
+        "J_t_ii":  aE("J_t_ie").sum(1) + aE("B_cU_t_inh").sum(1),
+    }
+    for k, Etot in exc_tot.items():
+        Itot = aE(k).sum(1)
+        f = np.where(Itot > 1e-9, Etot / np.maximum(Itot, 1e-9), 1.0)
+        p[k] = p[k] * jnp.asarray(f)[:, None]
+    # (3) spectral-radius normalization (bisection on a global scale s).
+    lam = np.linalg.eigvals(_tc_recurrent_matrix(p, n_cU, n_cL, n_cI, n_tE, n_tI))
+    shift = 1.0 - 1.0 / tau
+    rho_J = lambda s: float(np.max(np.abs(shift + (s / tau) * lam)))
+    lo, hi = 1e-4, 20.0
+    for _ in range(50):
+        mid = 0.5 * (lo + hi)
+        if rho_J(mid) < target_rho:
+            lo = mid
+        else:
+            hi = mid
+    s = 0.5 * (lo + hi)
+    for k in _TC_EXC_BLOCKS + _TC_INH_BLOCKS:
+        p[k] = p[k] * s
+    # (4) persistent-activity integrator diagonal on the excitatory self-blocks.
+    if persistent_self_gain is not None:
+        d_val = tau * persistent_self_gain - (tau - 1.0)   # |J_ii| for target self-gain
+        for k, nk in (("J_cU", n_cU), ("J_cL", n_cL), ("J_t_ee", n_tE)):
+            di = jnp.arange(nk)
+            p[k] = jnp.asarray(p[k]).at[di, di].set(d_val)
+    # realized spectral radius of the final loop
+    lam_f = np.linalg.eigvals(_tc_recurrent_matrix(p, n_cU, n_cL, n_cI, n_tE, n_tI))
+    return p, float(np.max(np.abs(shift + (1.0 / tau) * lam_f)))
+
+
 def init_params(
     rng_key,
     n_c_U=5,
@@ -74,6 +168,9 @@ def init_params(
     g_bg=0.5,
     g_nm=0.5,
     noise_std=0.05,
+    balanced_init=False,
+    balanced_target_rho=0.997,
+    persistent_self_gain=None,
 ):
     """Initialize multiregion CBT loop params and runtime config.
 
@@ -240,24 +337,24 @@ def init_params(
         "tau_pka_rise": 10.0,
         # PKA gain bounds. m_floor keeps the DA / adenosine per-SPN weights
         # (m_d1, m_d2, m_a1, m_a2) ≥ m_floor; k_a stays in [k_a_floor, k_a_cap].
-        "m_floor": 0.01,
+        "m_floor": 0.001,
         # Minimum magnitude of each SNr → medulla (E unit) inhibitory weight, so
         # the tonic SNr gate on motor output can't be trained away to zero.
         "snr_med_floor": 0.1,
         # A1R→D1 PKA floor dropped to 0: the shared m_floor forced tonic A1R
         # inhibition above the (structurally weak) DA drive, pinning pka_d1 dead.
         # m_floor_a2 stays at m_floor so the A2R drive keeps pka_d2 alive.
-        "m_floor_a1": 0.1,
-        "m_floor_a2": 0.1,
+        "m_floor_a1": 0.001,
+        "m_floor_a2": 0.001,
         # Gain on the DA→PKA drive so phasic DA can actually move pka_d1 (and
         # modulate pka_d2) given the small mean_snc.
         "da_pka_gain": 1.0,
-        "k_a_floor": 0.05,
+        "k_a_floor": 0.001,
         "k_a_cap": 1.0,
         "snc_pacer_min": 0.05,
-        "snc_pacer_max": 0.15,
+        "snc_pacer_max": 0.2,
         "snr_pacer_max": 0.85,
-        "snr_pacer_min": 0.5,
+        "snr_pacer_min": 0.4,
         # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
         # (caps at -1), so the tonic pacer floor must exceed ~1 to keep GPe from
         # being silenced; gpe_pacer stays in [gpe_pacer_min, gpe_pacer_max] >= 1.
@@ -266,6 +363,26 @@ def init_params(
         "stn_pacer_max": 0.3,
         "noise_std": noise_std,
     }
+
+    if balanced_init:
+        # Steps 1-4: balance the Dale's-law cortico-thalamic loop and set it
+        # near-critical so it can hold/ramp a cue signal (see tests/eigen_ramp_probe).
+        config["tau_c"] = 10.0   # step 4: slower cortical integration
+        config["tau_t"] = 10.0   # loop spans thalamus too; keep tau uniform
+        # target_rho sets the loop's memory timescale tau_eff = -1/ln(rho). To hold
+        # a cue across the self-timed delay (~t_cue+t_wait steps) the mode must
+        # decay slowly: rho ~ exp(-1/delay). 0.95 (tau_eff~20) is far too fast;
+        # ~0.997 matches a ~300-step delay. Tunable via balanced_target_rho.
+        params, realized_rho = _balanced_thalamocortical_init(
+            params, n_c_U, n_c_L, n_c_inh, n_t_exc, n_t_inh,
+            tau=config["tau_c"], target_rho=balanced_target_rho,
+            persistent_self_gain=persistent_self_gain,
+        )
+        pg = f", persistent self-gain={persistent_self_gain}" if persistent_self_gain else ""
+        print(f"[balanced_init] thalamocortical loop rho(J) = {realized_rho:.3f} "
+              f"(target {balanced_target_rho}); matched scaling + per-row E/I balance, "
+              f"tau_c=tau_t=10{pg}.")
+
     return params, config
 
 
@@ -398,10 +515,10 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # m_floor_a2 preserves the A2R drive that keeps pka_d2 alive.
     m_floor_a1 = config.get("m_floor_a1", m_floor)
     m_floor_a2 = config.get("m_floor_a2", m_floor)
-    m_d1 = exc(params["m_d1"]) + m_floor
-    m_d2 = exc(params["m_d2"]) + m_floor
-    m_a1 = exc(params["m_a1"]) + m_floor_a1
-    m_a2 = exc(params["m_a2"]) + m_floor_a2
+    m_d1 = ciel_floor(exc(params["m_d1"]),1, m_floor)
+    m_d2 = ciel_floor(exc(params["m_d2"]),1, m_floor)
+    m_a1 = ciel_floor(exc(params["m_a1"]), 1, m_floor_a1)
+    m_a2 = ciel_floor(exc(params["m_a2"]), 1, m_floor_a2)
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
     b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition

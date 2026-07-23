@@ -19,8 +19,8 @@ def inh(w):
 
 
 def nln(x):
-    return jnp.maximum(0, jax.nn.tanh(x))
-    #return jax.nn.sigmoid(4*(x-0.5))
+    #return jnp.maximum(0, jax.nn.tanh(x))
+    return jax.nn.sigmoid(4*(x-0.5))
     #return jnp.maximum(0, x**3/(x**3+0.5**3))
     # return jax.nn.softplus(x - 4.0)
     # Hill function: defined on x >= 0 (firing rates are non-negative). Rectify
@@ -34,8 +34,11 @@ def bg_nln(x, b):
     # Same Hill form with a PKA-shifted half-max; rectify the input (see nln).
     # x = jnp.maximum(0.0, x)
     #return x**jnp.exp(1) / (x**jnp.exp(1) + (1-b))
-    c = b/(1-b)
-    return jnp.maximum(jax.nn.tanh(c*x), 0)
+    #c = b/(1-b)
+    #return jnp.maximum(jax.nn.tanh(c*x), 0)
+    c = 3/(1-b)
+    d = (1/6)*((1-b)/b)
+    return jax.nn.sigmoid(c*(x-d))
 
 def bg_nln_inh(x, b):
     c = 1-(b/(1-b))

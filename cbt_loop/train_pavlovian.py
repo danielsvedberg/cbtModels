@@ -51,6 +51,7 @@ def main():
         g_bg=rnn_cfg["g_bg"],
         g_nm=rnn_cfg["g_nm"],
         noise_std=rnn_cfg["noise_std"],
+        balanced_init=rnn_cfg.get("balanced_init", False),
     )
 
     optimizer = optax.chain(

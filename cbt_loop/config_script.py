@@ -13,24 +13,31 @@ SEED_CONFIG = {
 
 RNN_CONFIG = {
     # Cortex excitatory pool split into two PT-like populations (Economo 2018).
-    "n_c_U": 4,
-    "n_c_L": 4,
-    "n_c_inh": 2,
-    "n_d1": 4,
-    "n_d2": 4,
+    "n_c_U": 10,
+    "n_c_L": 10,
+    "n_c_inh": 10,
+    "n_d1": 8,
+    "n_d2": 8,
     "n_snc": 4,
     "n_snr": 6,
     "n_gpe": 6,
     "n_stn": 6,
     "n_sc": 6,
-    "n_t_exc": 8,
-    "n_t_inh": 2,
+    "n_t_exc": 10,
+    "n_t_inh": 5,
     "n_med": 4,
     "n_input":1,
     "n_output":1,
     "g_bg": 1.0,
     "g_nm": 1.0,
     "noise_std": 0.01,
+    # Balance the Dale's-law cortico-thalamic loop and set it near-critical at
+    # init (matched 1/sqrt(n) scaling + per-row E/I balance + spectral-radius
+    # normalization to ~0.95 + tau_c=tau_t=10). Turned OFF: per-row balance zeroes
+    # the net recurrent drive and, with no constant cortical input term, leaves
+    # x=0 as the loop's only fixed point -> cortex/thalamus dead at rest, all
+    # gradient collapses onto out_bias (see tests/init_dynamics_probe.py).
+    "balanced_init": False,
 }
 
 OPTIM_CONFIG = {
