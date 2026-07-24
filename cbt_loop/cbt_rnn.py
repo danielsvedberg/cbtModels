@@ -366,7 +366,8 @@ def init_params(
 
     if balanced_init:
         # Steps 1-4: balance the Dale's-law cortico-thalamic loop and set it
-        # near-critical so it can hold/ramp a cue signal (see tests/eigen_ramp_probe).
+        # near-critical so it can hold/ramp a cue signal (see
+        # ../corticothalamic/stability_analysis.py).
         config["tau_c"] = 10.0   # step 4: slower cortical integration
         config["tau_t"] = 10.0   # loop spans thalamus too; keep tau uniform
         # target_rho sets the loop's memory timescale tau_eff = -1/ln(rho). To hold

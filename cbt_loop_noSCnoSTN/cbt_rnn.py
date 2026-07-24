@@ -73,7 +73,7 @@ def init_params(
     n_output=1,
     g_bg=0.5,
     g_nm=0.5,
-    noise_std=0.05,
+    noise_std=0.01,
 ):
     """Initialize multiregion CBT loop params and runtime config.
 
@@ -180,14 +180,14 @@ def init_params(
         # Trainable PKA initial states. Start low so the leaky integrator
         # builds toward its steady state during the trial instead of starting
         # already near saturation.
-        "pka_d10": jnp.ones((n_d1,)) * 0.3,
-        "pka_d20": jnp.ones((n_d2,)) * 0.3,
+        "pka_d10": jnp.ones((n_d1,)) * 0.25,
+        "pka_d20": jnp.ones((n_d2,)) * 0.25,
         # Adenosine: one tunable tonic level k_a (scalar — will become a
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
         "k_a": jnp.array(1.0),
-        "m_a1": jnp.ones((n_d1,)) * 0.05,  # A1R inhibitory drive on D1 PKA
-        "m_a2": jnp.ones((n_d2,)) * 0.01,  # A2R excitatory drive on D2 PKA
+        "m_a1": jnp.ones((n_d1,)) * 0.1,  # A1R inhibitory drive on D1 PKA
+        "m_a2": jnp.ones((n_d2,)) * 0.1,  # A2R excitatory drive on D2 PKA
     }
 
     config = {
@@ -196,13 +196,13 @@ def init_params(
         "n_c_inh": n_c_inh,
         "n_t_exc": n_t_exc,
         "n_t_inh": n_t_inh,
-        "tau_c": 5.0,
-        "tau_med": 5.0,
-        "tau_d1": 5.0,
-        "tau_d2": 5.0,
-        "tau_t": 5.0,
-        "tau_snr": 5.0,
-        "tau_gpe": 5.0,
+        "tau_c": 10.0,
+        "tau_med": 10.0,
+        "tau_d1": 10.0,
+        "tau_d2": 10.0,
+        "tau_t": 10.0,
+        "tau_snr": 10.0,
+        "tau_gpe": 10.0,
         "tau_snc": 10.0,
         # PKA deactivation: 10s half-life → τ = t_half/ln2 ≈ 14.4s → 1440 steps at dt=10ms.
         "tau_pka_fall": 1440.0,
@@ -226,7 +226,7 @@ def init_params(
         "k_a_floor": 0.05,
         "k_a_cap": 1.0,
         "snc_pacer_min": 0.05,
-        "snc_pacer_max": 0.15,
+        "snc_pacer_max": 0.2,
         "snr_pacer_max": 0.85,
         "snr_pacer_min": 0.2,
         # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
@@ -455,48 +455,48 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_med = x_med + coef * jr.normal(rng_med, x_med.shape)
 
         # cortex: cU/cL excitatory PT populations + shared inhibitory c_inh.
-        # Snapshot every recurrent/cross-pool drive before overwriting any pool.
-        cU_rec = tanh(j_cU @ x_c_U + b_cL_cU @ x_c_L + j_ci_cU @ x_c_inh)
-        cL_rec = tanh(j_cL @ x_c_L + b_cU_cL @ x_c_U + j_ci_cL @ x_c_inh)
-        ci_rec = tanh(j_cU_ci @ x_c_U + j_cL_ci @ x_c_L + j_c_ii @ x_c_inh)
+        # Raw signed recurrent/cross-pool currents; one nln per area, at the end.
+        cU_rec = j_cU @ x_c_U + b_cL_cU @ x_c_L + j_ci_cU @ x_c_inh
+        cL_rec = j_cL @ x_c_L + b_cU_cL @ x_c_U + j_ci_cL @ x_c_inh
+        ci_rec = j_cU_ci @ x_c_U + j_cL_ci @ x_c_L + j_c_ii @ x_c_inh
 
         # cU: reciprocal thalamic input + cue.
         x_c_U = (1.0 - 1.0 / tau_c) * x_c_U + (1.0 / tau_c) * cU_rec
-        x_c_U = x_c_U + (1.0 / tau_c) * tanh(b_t_cU @ x_t_exc)
-        x_c_U = x_c_U + (1.0 / tau_c) * tanh(b_cue_cU @ u_t)
+        x_c_U = x_c_U + (1.0 / tau_c) * (b_t_cU @ x_t_exc)
+        x_c_U = x_c_U + (1.0 / tau_c) * (b_cue_cU @ u_t)
         x_c_U = nln(x_c_U)
 
         # cL: cue only (no direct thalamic input).
         x_c_L = (1.0 - 1.0 / tau_c) * x_c_L + (1.0 / tau_c) * cL_rec
-        x_c_L = x_c_L + (1.0 / tau_c) * tanh(b_cue_cL @ u_t)
+        x_c_L = x_c_L + (1.0 / tau_c) * (b_cue_cL @ u_t)
         x_c_L = nln(x_c_L)
 
         # c_inh: thalamic feedforward inhibition + cue.
         x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * ci_rec
-        x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_t_c_inh @ x_t_exc)
-        x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_cue_c_inh @ u_t)
+        x_c_inh = x_c_inh + (1.0 / tau_c) * (b_t_c_inh @ x_t_exc)
+        x_c_inh = x_c_inh + (1.0 / tau_c) * (b_cue_c_inh @ u_t)
         x_c_inh = nln(x_c_inh)
 
         # thalamus: same pre-step snapshot trick.
-        t_rec_to_exc = tanh(j_t_ee @ x_t_exc + j_t_ei @ x_t_inh)
-        t_rec_to_inh = tanh(j_t_ie @ x_t_exc + j_t_ii @ x_t_inh)
+        t_rec_to_exc = j_t_ee @ x_t_exc + j_t_ei @ x_t_inh
+        t_rec_to_inh = j_t_ie @ x_t_exc + j_t_ii @ x_t_inh
 
         x_t_exc = (1.0 - 1.0 / tau_t) * x_t_exc + (1.0 / tau_t) * t_rec_to_exc
-        x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_cU_t_exc @ x_c_U)
-        x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_snr_t_exc @ x_snr)
+        x_t_exc = x_t_exc + (1.0 / tau_t) * (b_cU_t_exc @ x_c_U)
+        x_t_exc = x_t_exc + (1.0 / tau_t) * (b_snr_t_exc @ x_snr)
         x_t_exc = nln(x_t_exc)
 
         x_t_inh = (1.0 - 1.0 / tau_t) * x_t_inh + (1.0 / tau_t) * t_rec_to_inh
-        x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_cU_t_inh @ x_c_U)
-        x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_snr_t_inh @ x_snr)
+        x_t_inh = x_t_inh + (1.0 / tau_t) * (b_cU_t_inh @ x_c_U)
+        x_t_inh = x_t_inh + (1.0 / tau_t) * (b_snr_t_inh @ x_snr)
         x_t_inh = nln(x_t_inh)
 
         x_snc = (1.0 - (1.0 / tau_snc)) * x_snc
         x_snc = x_snc + (1.0 / tau_snc) * snc_pacer
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_cL_snc @ x_c_L)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_d1_snc @ x_d1)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_d2_snc @ x_d2)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_gpe_snc @ x_gpe)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_cL_snc @ x_c_L)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_d1_snc @ x_d1)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_d2_snc @ x_d2)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_gpe_snc @ x_gpe)
         x_snc = nln(x_snc)
         # SNc is broadcast as a single scalar to every SPN; each SPN scales it
         # by its own per-neuron gain m_d1[i] / m_d2[i].
@@ -508,49 +508,49 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # Asymmetric timescales emerge from the gain ratio tau_fall/tau_rise.
         #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
         pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1
-        pka_d1 = pka_d1 + (1.0 / tau_pka_rise) * jnp.maximum(tanh(da_pka_gain * m_d1 * mean_snc) - tanh(m_a1 * k_a), 0)
-        pka_d1 = nln(pka_d1)
-        #pka_d1 = sigmoid(4*(pka_d1-0.5))
+        pka_d1 = pka_d1 + (1.0 / tau_pka_rise) * jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
+        #pka_d1 = nln(pka_d1)
+        pka_d1 = sigmoid(4*(pka_d1-0.5))
 
         #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
         pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2
-        pka_d2 = pka_d2 + (1.0 / tau_pka_rise) * jnp.maximum(tanh(m_a2 * k_a) - tanh(da_pka_gain * m_d2 * mean_snc), 0)
-        pka_d2 = nln(pka_d2)
-        #pka_d2 = sigmoid(4*(pka_d2-0.5))
+        pka_d2 = pka_d2 + (1.0 / tau_pka_rise) * jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
+        #pka_d2 = nln(pka_d2)
+        pka_d2 = sigmoid(4*(pka_d2-0.5))
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
-        x_d1 = x_d1 + (1.0 / tau_d1) * tanh(j_d1 @ x_d1)
-        x_d1 = x_d1 + (1.0 / tau_d1) * tanh(b_cU_d1 @ x_c_U)
-        x_d1 = x_d1 + (1.0 / tau_d1) * tanh(b_d2_d1 @ x_d2)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (j_d1 @ x_d1)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (b_d2_d1 @ x_d2)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (b_cU_d1 @ x_c_U)
         x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
         x_d1 = bg_nln(x_d1, pka_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
-        x_d2 = x_d2 + (1.0 / tau_d2) * tanh(j_d2 @ x_d2)
-        x_d2 = x_d2 + (1.0 / tau_d2) * tanh(b_cU_d2 @ x_c_U)
-        x_d2 = x_d2 + (1.0 / tau_d2) * tanh(b_d1_d2 @ x_d1)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (j_d2 @ x_d2)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (b_d1_d2 @ x_d1)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (b_cU_d2 @ x_c_U)
         x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
         x_d2 = bg_nln(x_d2, pka_d2)
 
         x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
         x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer
-        x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_d2_gpe @ x_d2)
-        x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_cU_gpe @ x_c_U)  # cU → GPe (exc)
+        x_gpe = x_gpe + (1.0 / tau_gpe) * (b_d2_gpe @ x_d2)
+        x_gpe = x_gpe + (1.0 / tau_gpe) * (b_cU_gpe @ x_c_U)  # cU → GPe (exc)
         x_gpe = nln(x_gpe)
 
         x_snr = (1.0 - (1.0 / tau_snr)) * x_snr
         x_snr = x_snr + (1.0 / tau_snr) * snr_pacer
-        x_snr = x_snr + (1.0 / tau_snr) * tanh(b_d1_snr @ x_d1)
-        x_snr = x_snr + (1.0 / tau_snr) * tanh(b_gpe_snr @ x_gpe)
+        x_snr = x_snr + (1.0 / tau_snr) * (b_d1_snr @ x_d1)
+        x_snr = x_snr + (1.0 / tau_snr) * (b_gpe_snr @ x_gpe)
         x_snr = nln(x_snr)
 
         # medulla: two E/I pairs with reciprocal coupling; cortical (exc) and
         # inhibitory SNr drive both target the E units only
         x_med = (1.0 - (1.0 / tau_med)) * x_med 
-        x_med = x_med + (1.0 / tau_med) * tanh(j_med @ x_med)
-        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_snr_med @ x_snr))  # SNr → Medulla E units only
-        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_cL_med @ x_c_L))  # cL → medulla E units only
+        x_med = x_med + (1.0 / tau_med) * (j_med @ x_med)
+        x_med = x_med.at[:2].add((1.0 / tau_med) * (b_snr_med @ x_snr))  # SNr → Medulla E units only
+        x_med = x_med.at[:2].add((1.0 / tau_med) * (b_cL_med @ x_c_L))  # cL → medulla E units only
         x_med = nln(x_med)
 
         #y_t = nln(c_med @ x_med[:2])  # floored readout (rests at 0 -> no RL exploration)

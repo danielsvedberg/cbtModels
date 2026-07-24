@@ -1,7 +1,38 @@
-# Corticothalamic Two-Node RNN
+# Corticothalamic stability analysis + two-node RNN
 
-This folder contains a densely connected two-node RNN (JAX + Optax) trained with
-the generalized RL objective in `self_timed_movement_task.py`.
+## Stability analysis (primary)
+
+`stability_analysis.py` — spectral / fixed-point stability of the cortico-thalamic
+loop and the striatal gate, using the **actual** nonlinearity from
+`self_timed_movement_task.py` (`nln`, `bg_nln`). It consolidates the former
+`cbt_loop/tests/eigen_ramp_probe.py`, whose limitation was that it took the
+spectral radius of the *linear* update map `J = (1-1/tau)I + (1/tau)W` — i.e. it
+assumed a nonlinearity gain of 1 (a linearization about `x=0`). That misses the
+fact that `nln` is contractive and saturating, so the loop can settle at a high,
+signal-dead fixed point whose local gain → 0 (a strongly stable attractor the
+linear test never sees).
+
+This script instead:
+1. iterates the **nonlinear** map to its fixed point `x*`,
+2. linearizes there — `J* = diag(nln'(pre*)) · [(1-1/tau)I + (1/tau)W]` — and
+   reports the operating-point spectral radius `rho*` alongside the naive linear
+   `rho` and the mean fixed-point activity,
+3. runs cue-evoked persistence and a size sweep on `rho*`, and
+4. shows why the striatum's **per-term** nonlinearity (each projection wrapped in
+   `nln`/`bg_nln` separately) deletes inhibition — `nln(negative current)` is a
+   small *positive* floor, so a growing inhibitory current never gates the gate
+   down — pinning D1/D2 to saturation.
+
+Run: `python corticothalamic/stability_analysis.py` (plots → `plots/`).
+
+> Note: `stmt.nln` is currently `sigmoid(4*(x-0.5))` (not the older
+> `max(0, tanh)`); `stmt.bg_nln` is `sigmoid(c*(x-d))`. The analysis mirrors and
+> asserts these against the live definitions at import.
+
+## Two-node RNN (legacy exploration)
+
+This folder also contains a densely connected two-node RNN (JAX + Optax) trained
+with the generalized RL objective in `self_timed_movement_task.py`.
 
 - Node 1: cortex (`ctx`), 20 units
 - Node 2: thalamus (`t`), 20 units
