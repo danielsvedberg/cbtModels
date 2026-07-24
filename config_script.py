@@ -213,6 +213,19 @@ CBT_INIT_STATE = {
     "pka_d20": 0.3,
 }
 
+# Scalar initial VALUES of trainable weight params that aren't fan-in-scaled
+# (canonical = cbt_loop). Each family reads the subset it has: cbt_loop uses all;
+# noSC has no k_a (it uses DA/adenosine concentration dynamics); noSCnoSTN has no
+# out_gain/out_bias (plain nln readout).
+CBT_WEIGHT_INIT = {
+    "m_a1": 0.05,          # A1R inhibitory drive on D1 PKA (per-SPN gain)
+    "m_a2": 0.01,          # A2R excitatory drive on D2 PKA (per-SPN gain)
+    "out_gain": 4.0,       # readout gain
+    "out_bias": -1.0986123,  # readout bias = logit(0.25)
+    "k_a": 1.0,            # tonic adenosine level (pre-sigmoid/exc)
+}
+
+
 # Architecture-unique keys per CBT family (nuclei dropped; extra runtime keys;
 # extra initial-state keys).
 _CBT_FAMILY_STRUCTURE = {
@@ -312,6 +325,13 @@ def init_state_for(family):
     d = dict(CBT_INIT_STATE)
     d.update(_CBT_FAMILY_STRUCTURE[family]["extra_init"])
     return d
+
+
+def weight_init_for(family):
+    """Scalar init values of non-fan-in-scaled trainable weights (m_a1/m_a2,
+    out_gain/out_bias, k_a). Shared across the CBT trio; each reads the subset
+    it uses."""
+    return dict(CBT_WEIGHT_INIT)
 
 
 def _make_optimizer():

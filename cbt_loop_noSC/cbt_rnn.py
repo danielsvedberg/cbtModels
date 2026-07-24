@@ -97,6 +97,7 @@ def init_params(rng_key, n_input):
     missing key — no silent defaults). n_input is the only per-call argument.
     """
     _rc = _rootcfg.rnn_config_for(_FAMILY)
+    _wi = _rootcfg.weight_init_for(_FAMILY)
     n_c_U = _rc["n_c_U"]
     n_c_L = _rc["n_c_L"]
     n_c_inh = _rc["n_c_inh"]
@@ -207,8 +208,8 @@ def init_params(rng_key, n_input):
         # out_bias = logit(0.25) gives a nonzero resting response prob (~0.25) so the
         # policy can explore from the start (instead of being floored at 0 by nln);
         # out_gain sets the readout's dynamic range. Both are trainable.
-        "out_gain": jnp.array(4.0),
-        "out_bias": jnp.array(-1.0986123),  # logit(0.25)
+        "out_gain": jnp.array(_wi["out_gain"]),
+        "out_bias": jnp.array(_wi["out_bias"]),
         # Initial states (area rates, PKA, and DA/adenosine concentrations) are
         # fixed non-trainable constants (0.1), set directly in multiregion_rnn —
         # not part of the optimized parameter set.
@@ -217,8 +218,8 @@ def init_params(rng_key, n_input):
         # _step) cleared with independent time constants. m_a1 / m_a2 are the
         # per-SPN adenosine-receptor (A1R / A2R) sensitivities, mirroring
         # m_d1 / m_d2 (the D1R / D2R dopamine sensitivities) above.
-        "m_a1": jnp.ones((n_d1,)) * 0.05,  # A1R inhibitory drive on D1 PKA
-        "m_a2": jnp.ones((n_d2,)) * 0.01,  # A2R excitatory drive on D2 PKA
+        "m_a1": jnp.ones((n_d1,)) * _wi["m_a1"],  # A1R inhibitory drive on D1 PKA
+        "m_a2": jnp.ones((n_d2,)) * _wi["m_a2"],  # A2R excitatory drive on D2 PKA
     }
 
     # Biophysical runtime constants are declared centrally (config_script.

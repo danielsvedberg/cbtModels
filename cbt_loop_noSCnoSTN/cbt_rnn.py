@@ -71,6 +71,7 @@ def init_params(rng_key, n_input):
     """
     _rc = _rootcfg.rnn_config_for(_FAMILY)
     _is = _rootcfg.init_state_for(_FAMILY)
+    _wi = _rootcfg.weight_init_for(_FAMILY)
     n_c_U = _rc["n_c_U"]
     n_c_L = _rc["n_c_L"]
     n_c_inh = _rc["n_c_inh"]
@@ -187,9 +188,9 @@ def init_params(rng_key, n_input):
         # Adenosine: one tunable tonic level k_a (scalar — will become a
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
-        "k_a": jnp.array(1.0),
-        "m_a1": jnp.ones((n_d1,)) * 0.1,  # A1R inhibitory drive on D1 PKA
-        "m_a2": jnp.ones((n_d2,)) * 0.1,  # A2R excitatory drive on D2 PKA
+        "k_a": jnp.array(_wi["k_a"]),
+        "m_a1": jnp.ones((n_d1,)) * _wi["m_a1"],  # A1R inhibitory drive on D1 PKA
+        "m_a2": jnp.ones((n_d2,)) * _wi["m_a2"],  # A2R excitatory drive on D2 PKA
     }
 
     # Biophysical runtime constants are declared centrally (config_script.
@@ -207,18 +208,6 @@ def init_params(rng_key, n_input):
 
 
 def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None):
-    n_c_U_   = params["J_cU"].shape[0]
-    n_c_L_   = params["J_cL"].shape[0]
-    n_c_inh_ = params["J_c_ii"].shape[0]
-    n_d1_    = params["J_d1"].shape[0]
-    n_d2_    = params["J_d2"].shape[0]
-    n_snc_   = params["P_snc"].shape[0]
-    n_gpe_   = params["J_gpe"].shape[0]
-    n_snr_   = params["P_snr"].shape[0]
-    n_t_exc_ = params["J_t_ee"].shape[0]
-    n_t_inh_ = params["J_t_ii"].shape[0]
-    n_med_   = params["J_med_w1"].shape[0] * 2
-
     # Trainable initial states come straight from params (crashes if absent — no
     # fallback); their starting values were set from config_script.CBT_INIT_STATE.
     x_c0_U   = jnp.asarray(params["x_c0_U"])

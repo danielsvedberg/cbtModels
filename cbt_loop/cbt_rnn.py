@@ -170,6 +170,7 @@ def init_params(rng_key, n_input):
     """
     _rc = _rootcfg.rnn_config_for(_FAMILY)
     _is = _rootcfg.init_state_for(_FAMILY)
+    _wi = _rootcfg.weight_init_for(_FAMILY)
     n_c_U = _rc["n_c_U"]
     n_c_L = _rc["n_c_L"]
     n_c_inh = _rc["n_c_inh"]
@@ -290,8 +291,8 @@ def init_params(rng_key, n_input):
         # out_bias = logit(0.25) gives a nonzero resting response prob (~0.25) so the
         # policy can explore from the start (instead of being floored at 0 by nln);
         # out_gain sets the readout's dynamic range. Both are trainable.
-        "out_gain": jnp.array(4.0),
-        "out_bias": jnp.array(-1.0986123),  # logit(0.25)
+        "out_gain": jnp.array(_wi["out_gain"]),
+        "out_bias": jnp.array(_wi["out_bias"]),
         # Trainable initial states (resting/baseline activity per area); the
         # starting values are declared centrally (config_script.CBT_INIT_STATE).
         "x_c0_U": jnp.ones((n_c_U,)) * _is["x_c0_U"],
@@ -312,9 +313,9 @@ def init_params(rng_key, n_input):
         # Adenosine: one tunable tonic level k_a (scalar — will become a
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
-        "k_a": jnp.array(1.0),
-        "m_a1": jnp.ones((n_d1,)) * 0.05,  # A1R inhibitory drive on D1 PKA
-        "m_a2": jnp.ones((n_d2,)) * 0.01,  # A2R excitatory drive on D2 PKA
+        "k_a": jnp.array(_wi["k_a"]),
+        "m_a1": jnp.ones((n_d1,)) * _wi["m_a1"],  # A1R inhibitory drive on D1 PKA
+        "m_a2": jnp.ones((n_d2,)) * _wi["m_a2"],  # A2R excitatory drive on D2 PKA
     }
 
     # Biophysical runtime constants are declared centrally (config_script.
