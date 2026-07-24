@@ -98,7 +98,6 @@ def main():
     task = cfg.PRETRAIN_TASK_CONFIG
     pretrain_cfg = cfg.PRETRAINING_CONFIG
     rl_cfg = cfg.RL_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
 
     inputs, targets, masks = stmt.hybrid_stmt(
         task["t_start"],

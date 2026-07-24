@@ -94,7 +94,6 @@ def _make_dual_cue_weights(params, rng_key):
 def main():
     train_cfg = cfg.TRAINING_CONFIG
     rl_cfg = cfg.RL_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
 
     pav_path = cfg.pavlovian_params_path()
     print(f"Loading Pavlovian parameters from {pav_path}...")

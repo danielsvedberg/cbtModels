@@ -76,7 +76,6 @@ def _build_hybrid_batch():
 def main():
     train_cfg = cfg.TRAINING_CONFIG
     rl_cfg = cfg.RL_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
 
     pav_path = cfg.pavlovian_params_path()
     print(f"Loading Pavlovian parameters from {pav_path}...")

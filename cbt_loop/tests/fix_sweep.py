@@ -41,7 +41,6 @@ LOOP_INH = ["J_ci_cU", "J_ci_cL", "J_c_ii", "J_t_ei", "J_t_ii"]
 
 
 def build():
-    rnn_cfg = cfg.RNN_CONFIG
     t = cfg.PAVLOVIAN_CONFIG
     inputs, targets, masks = stmt.pavlovian_task(
         T_start=t["t_start"], T_cue=t["t_cue"], T_response=t["t_response"], T=t["t_total"])

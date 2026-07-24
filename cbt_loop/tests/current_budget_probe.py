@@ -35,7 +35,6 @@ inh = lambda w: -np.abs(np.asarray(w))
 
 
 def build():
-    rnn_cfg = cfg.RNN_CONFIG
     task_cfg = cfg.PAVLOVIAN_CONFIG
     inputs, targets, masks = stmt.pavlovian_task(
         T_start=task_cfg["t_start"], T_cue=task_cfg["t_cue"],

@@ -32,7 +32,6 @@ def main():
     task_cfg = cfg.TASK_CONFIG
     train_cfg = cfg.TRAINING_CONFIG
     rl_cfg = cfg.RL_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
 
     params_path = cfg.params_path()
     print(f"Loading existing parameters from {params_path}...")

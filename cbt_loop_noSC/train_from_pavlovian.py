@@ -102,7 +102,6 @@ def _make_dual_cue_weights(params, rng_key):
 def main():
     train_cfg = cfg.TRAINING_CONFIG
     rl_cfg = cfg.RL_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
 
     src_path = cfg.hybrid_params_path()
     print(f"Loading hybrid parameters from {src_path}...")

@@ -36,7 +36,6 @@ AREAS = cbtl.STATE_AREA_ORDER
 
 def build():
     task_cfg = cfg.PAVLOVIAN_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
     inputs, targets, masks = stmt.pavlovian_task(
         T_start=task_cfg["t_start"], T_cue=task_cfg["t_cue"],
         T_response=task_cfg["t_response"], T=task_cfg["t_total"],

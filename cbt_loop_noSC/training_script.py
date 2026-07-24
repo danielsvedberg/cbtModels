@@ -33,7 +33,6 @@ def main():
     task_cfg = cfg.TASK_CONFIG
     train_cfg = cfg.TRAINING_CONFIG
     rl_cfg = cfg.RL_CONFIG
-    rnn_cfg = cfg.RNN_CONFIG
 
     inputs, targets, masks = _build_task(task_cfg)
 
