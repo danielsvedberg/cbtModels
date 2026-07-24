@@ -4,7 +4,11 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-import vanilla_config as cfg
+import sys as _sys, pathlib as _pl
+_root = next(p for p in _pl.Path(__file__).resolve().parents if (p / 'config_script.py').exists())
+_sys.path.insert(0, str(_root)) if str(_root) not in _sys.path else None
+import config_script as _config_script
+cfg = _config_script.for_family('vanilla_rnn')
 from jax import lax, vmap
 
 # Allow importing from repository root when running scripts from vanilla_rnn/.
@@ -18,14 +22,22 @@ import self_timed_movement_task as stmt
 
 def init_params(
     rng_key,
-    n_hidden=64,
+    n_hidden=None,
     n_input=1,
     n_output=1,
-    rec_scale=0.15,
-    in_scale=0.25,
-    out_scale=0.5,
-    noise_std=0.01,
+    rec_scale=None,
+    in_scale=None,
+    out_scale=None,
+    noise_std=None,
 ):
+    # Architecture defaults are declared centrally (config_script).
+    import config_script as _rootcfg
+    _rc, _rt = _rootcfg.VANILLA_RNN_CONFIG, _rootcfg.VANILLA_RUNTIME_CONFIG
+    n_hidden = _rc["n_hidden"] if n_hidden is None else n_hidden
+    noise_std = _rc["noise_std"] if noise_std is None else noise_std
+    rec_scale = _rt["rec_scale"] if rec_scale is None else rec_scale
+    in_scale = _rt["in_scale"] if in_scale is None else in_scale
+    out_scale = _rt["out_scale"] if out_scale is None else out_scale
     k1, k2, k3 = jr.split(rng_key, 3)
     params = {
         "w_rec": rec_scale * jr.normal(k1, (n_hidden, n_hidden)),
@@ -37,7 +49,7 @@ def init_params(
     config = {
         "noise_std": noise_std,
         "x0": jnp.ones((n_hidden,))*0.1,
-        "tau": 20.0,
+        "tau": _rt["tau"],
     }
     return params, config
 

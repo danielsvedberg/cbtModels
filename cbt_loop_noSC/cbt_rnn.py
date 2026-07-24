@@ -12,6 +12,8 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 import self_timed_movement_task as stmt
+import config_script as _rootcfg
+_FAMILY = Path(__file__).resolve().parent.name
 
 
 def exc(w):
@@ -219,65 +221,17 @@ def init_params(
         "m_a2": jnp.ones((n_d2,)) * 0.01,  # A2R excitatory drive on D2 PKA
     }
 
-    config = {
+    # Biophysical runtime constants are declared centrally (config_script.
+    # CBT_RUNTIME_CONFIG + this family's architecture-unique extras).
+    config = dict(_rootcfg.runtime_config_for(_FAMILY))
+    config.update({
         "n_c_U": n_c_U,
         "n_c_L": n_c_L,
         "n_c_inh": n_c_inh,
         "n_t_exc": n_t_exc,
         "n_t_inh": n_t_inh,
-        "tau_c": 5.0,
-        "tau_med": 5.0,
-        "tau_d1": 5.0,
-        "tau_d2": 5.0,
-        "tau_t": 5.0,
-        "tau_snr": 5.0,
-        "tau_gpe": 5.0,
-        "tau_stn": 5.0,
-        "tau_snc": 10.0,
-        # PKA deactivation: 10s half-life → τ = t_half/ln2 ≈ 14.4s → 1440 steps at dt=10ms.
-        "tau_pka_fall": 1440.0,
-        # PKA activation: fast receptor-mediated cAMP rise; kept short so PKA can
-        # track SNc within the Pavlovian response window despite tanh saturation.
-        "tau_pka_rise": 10.0,
-        # PKA gain bounds. m_floor keeps the DA / adenosine per-SPN receptor
-        # weights (m_d1, m_d2, m_a1, m_a2) ≥ m_floor with a live gradient.
-        "m_floor": 0.001,
-        # Minimum magnitude of each SNr → medulla (E unit) inhibitory weight, so
-        # the tonic SNr gate on motor output can't be trained away to zero.
-        "snr_med_floor": 0.001,
-        # A1R→D1 PKA floor dropped to 0: the shared m_floor forced tonic A1R
-        # inhibition above the (structurally weak) DA drive, pinning pka_d1 dead.
-        # m_floor_a2 stays at m_floor so the A2R drive keeps pka_d2 alive.
-        "m_floor_a1": 0.001,
-        "m_floor_a2": 0.001,
-        # Gain on the DA→PKA drive so phasic DA can actually move pka_d1 (and
-        # modulate pka_d2) given the small mean_snc.
-        "da_pka_gain": 1.0,
-        # Striatal DA / adenosine concentration dynamics (forward Euler in _step):
-        #   C <- C + (1/tau) * (release_gain * mean_snc - C)
-        # DA and ATP→adenosine are co-released from SNc (release ∝ mean SNc
-        # firing) but cleared with independent time constants: DA fast (DAT
-        # reuptake, ~200 ms) and adenosine slow (~2 s), so co-released adenosine
-        # accumulates into a tonic tone while DA tracks phasic SNc bursts.
-        # release gains set the co-release stoichiometry (per-SPN receptor
-        # sensitivity lives in m_d1/m_d2 and m_a1/m_a2).
-        "tau_da": 20.0,
-        "tau_ado": 200.0,
-        "da_release": 1.0,
-        "ado_release": 1.0,
-        "snc_pacer_min": 0.05,
-        "snc_pacer_max": 0.15,
-        "snr_pacer_max": 0.7,
-        "snr_pacer_min": 0.15,
-        # GPe is an autonomous pacemaker. The D2->GPe drive is tanh-saturating
-        # (caps at -1), so the tonic pacer floor must exceed ~1 to keep GPe from
-        # being silenced; gpe_pacer stays in [gpe_pacer_min, gpe_pacer_max] >= 1.
-        "gpe_pacer_min": 0.05,
-        "gpe_pacer_max": 0.7,
-        "stn_pacer_min": 0.05,
-        "stn_pacer_max": 0.2,
         "noise_std": noise_std,
-    }
+    })
     return params, config
 
 

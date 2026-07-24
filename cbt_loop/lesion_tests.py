@@ -15,7 +15,11 @@ import matplotlib
 matplotlib.use("Agg")
 
 import cbt_rnn as cbtl
-import config_script as cfg
+import sys as _sys, pathlib as _pl
+_root = next(p for p in _pl.Path(__file__).resolve().parents if (p / 'config_script.py').exists())
+_sys.path.insert(0, str(_root)) if str(_root) not in _sys.path else None
+import config_script as _config_script
+cfg = _config_script.for_family('cbt_loop')
 import plotting_functions as pf
 import testing_script as ts
 
