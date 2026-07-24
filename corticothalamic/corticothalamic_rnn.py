@@ -44,8 +44,8 @@ def init_params(rng_key, n_input):
         "b_out": jnp.zeros((n_output,)),
     }
     config = {
-        "x_ctx0": jnp.ones((n_ctx,)) * 0.1,
-        "x_t0": jnp.ones((n_t,)) * 0.1,
+        "x_ctx0": jnp.ones((n_ctx,)) * _rt["x_init"],
+        "x_t0": jnp.ones((n_t,)) * _rt["x_init"],
         "tau_ctx": _rt["tau_ctx"],
         "tau_t": _rt["tau_t"],
         "noise_std": noise_std,

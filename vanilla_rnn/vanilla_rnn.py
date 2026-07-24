@@ -41,7 +41,7 @@ def init_params(rng_key, n_input):
     }
     config = {
         "noise_std": noise_std,
-        "x0": jnp.ones((n_hidden,))*0.1,
+        "x0": jnp.ones((n_hidden,)) * _rt["x_init"],
         "tau": _rt["tau"],
     }
     return params, config

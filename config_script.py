@@ -191,9 +191,32 @@ CBT_RUNTIME_CONFIG = {
     "stn_pacer_max": 0.3,
 }
 
-# Architecture-unique keys per CBT family (nuclei dropped; extra runtime keys).
+# Per-area initial state (resting/baseline activity each area starts at, before
+# the per-step noise+nln). One value per area, canonical = cbt_loop. Families that
+# store these as trainable params (cbt_loop, noSCnoSTN) use them as the init value;
+# noSC uses them directly as fixed initial conditions.
+CBT_INIT_STATE = {
+    "x_c0_U": 0.1,
+    "x_c0_L": 0.1,
+    "x_c0_inh": 0.1,
+    "x_d10": 0.1,
+    "x_d20": 0.1,
+    "x_snc0": 0.1,
+    "x_gpe0": 0.1,
+    "x_stn0": 0.1,   # STN families only
+    "x_snr0": 0.1,
+    "x_sc0": 0.1,    # SC families only
+    "x_t0_exc": 0.3,
+    "x_t0_inh": 0.3,
+    "x_med0": 0.1,
+    "pka_d10": 0.3,
+    "pka_d20": 0.3,
+}
+
+# Architecture-unique keys per CBT family (nuclei dropped; extra runtime keys;
+# extra initial-state keys).
 _CBT_FAMILY_STRUCTURE = {
-    "cbt_loop": {"drop_rnn": (), "extra_runtime": {}},
+    "cbt_loop": {"drop_rnn": (), "extra_runtime": {}, "extra_init": {}},
     "cbt_loop_noSC": {
         "drop_rnn": ("n_sc",),
         # noSC models DA/adenosine as dynamic concentrations (only it reads these).
@@ -202,8 +225,9 @@ _CBT_FAMILY_STRUCTURE = {
             "da_release": 1.0, "ado_release": 1.0,
             "stn_pacer_min": 0.05,
         },
+        "extra_init": {"x_da0": 0.1, "x_ado0": 0.1},
     },
-    "cbt_loop_noSCnoSTN": {"drop_rnn": ("n_sc", "n_stn"), "extra_runtime": {}},
+    "cbt_loop_noSCnoSTN": {"drop_rnn": ("n_sc", "n_stn"), "extra_runtime": {}, "extra_init": {}},
 }
 
 # --- corticothalamic (2-node ctx/thalamus RNN; architecture-specific) ---
@@ -220,6 +244,7 @@ CORTICOTHALAMIC_RUNTIME_CONFIG = {
     "cross_scale": 0.15,
     "in_scale": 0.25,
     "out_scale": 0.2,
+    "x_init": 0.1,   # initial state (both areas)
 }
 
 # --- vanilla (single hidden layer RNN; architecture-specific) ---
@@ -233,6 +258,7 @@ VANILLA_RUNTIME_CONFIG = {
     "rec_scale": 0.15,
     "in_scale": 0.25,
     "out_scale": 0.5,
+    "x_init": 0.1,   # initial hidden state
 }
 
 _ARCH_RNN_CONFIG = {"corticothalamic": CORTICOTHALAMIC_RNN_CONFIG, "vanilla_rnn": VANILLA_RNN_CONFIG}
@@ -278,6 +304,14 @@ def runtime_config_for(family):
     if family == "vanilla_rnn":
         return dict(VANILLA_RUNTIME_CONFIG)
     return {}
+
+
+def init_state_for(family):
+    """Per-area initial state for a CBT family (canonical + architecture extras,
+    e.g. noSC's DA/adenosine concentration states)."""
+    d = dict(CBT_INIT_STATE)
+    d.update(_CBT_FAMILY_STRUCTURE[family]["extra_init"])
+    return d
 
 
 def _make_optimizer():

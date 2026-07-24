@@ -236,9 +236,9 @@ def init_params(rng_key, n_input):
 
 
 def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None):
-    # Initial states are fixed (non-trainable) constants: every area rate, the
-    # PKA traces, and the DA/adenosine concentrations start at INIT_STATE.
-    INIT_STATE = 0.1
+    # Initial states are fixed (non-trainable) constants; the per-area starting
+    # values are declared centrally (config_script.CBT_INIT_STATE).
+    _is = _rootcfg.init_state_for(_FAMILY)
 
     n_c_U_   = params["J_cU"].shape[0]
     n_c_L_   = params["J_cL"].shape[0]
@@ -253,23 +253,23 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     n_t_inh_ = params["J_t_ii"].shape[0]
     n_med_   = params["J_med_w1"].shape[0] * 2
 
-    x_c0_U   = jnp.ones(n_c_U_)   * INIT_STATE
-    x_c0_L   = jnp.ones(n_c_L_)   * INIT_STATE
-    x_c0_inh = jnp.ones(n_c_inh_) * INIT_STATE
-    x_d10    = jnp.ones(n_d1_)    * INIT_STATE
-    x_d20    = jnp.ones(n_d2_)    * INIT_STATE
-    x_snc0   = jnp.ones(n_snc_)   * INIT_STATE
-    x_gpe0   = jnp.ones(n_gpe_)   * INIT_STATE
-    x_stn0   = jnp.ones(n_stn_)   * INIT_STATE
-    x_snr0   = jnp.ones(n_snr_)   * INIT_STATE
-    x_t0_exc = jnp.ones(n_t_exc_) * INIT_STATE
-    x_t0_inh = jnp.ones(n_t_inh_) * INIT_STATE
-    x_med0   = jnp.ones(n_med_)   * INIT_STATE
-    pka_d10  = jnp.ones(n_d1_)    * INIT_STATE
-    pka_d20  = jnp.ones(n_d2_)    * INIT_STATE
+    x_c0_U   = jnp.ones(n_c_U_)   * _is["x_c0_U"]
+    x_c0_L   = jnp.ones(n_c_L_)   * _is["x_c0_L"]
+    x_c0_inh = jnp.ones(n_c_inh_) * _is["x_c0_inh"]
+    x_d10    = jnp.ones(n_d1_)    * _is["x_d10"]
+    x_d20    = jnp.ones(n_d2_)    * _is["x_d20"]
+    x_snc0   = jnp.ones(n_snc_)   * _is["x_snc0"]
+    x_gpe0   = jnp.ones(n_gpe_)   * _is["x_gpe0"]
+    x_stn0   = jnp.ones(n_stn_)   * _is["x_stn0"]
+    x_snr0   = jnp.ones(n_snr_)   * _is["x_snr0"]
+    x_t0_exc = jnp.ones(n_t_exc_) * _is["x_t0_exc"]
+    x_t0_inh = jnp.ones(n_t_inh_) * _is["x_t0_inh"]
+    x_med0   = jnp.ones(n_med_)   * _is["x_med0"]
+    pka_d10  = jnp.ones(n_d1_)    * _is["pka_d10"]
+    pka_d20  = jnp.ones(n_d2_)    * _is["pka_d20"]
     # Striatal neuromodulator concentrations (scalars); kept raw (no nln/noise).
-    x_da0    = jnp.array(INIT_STATE)
-    x_ado0   = jnp.array(INIT_STATE)
+    x_da0    = jnp.array(_is["x_da0"])
+    x_ado0   = jnp.array(_is["x_ado0"])
 
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key

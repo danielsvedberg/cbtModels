@@ -169,6 +169,7 @@ def init_params(rng_key, n_input):
     (it is task-derived: 1 for single-cue, 2 for the dual/go-cue tasks).
     """
     _rc = _rootcfg.rnn_config_for(_FAMILY)
+    _is = _rootcfg.init_state_for(_FAMILY)
     n_c_U = _rc["n_c_U"]
     n_c_L = _rc["n_c_L"]
     n_c_inh = _rc["n_c_inh"]
@@ -291,25 +292,23 @@ def init_params(rng_key, n_input):
         # out_gain sets the readout's dynamic range. Both are trainable.
         "out_gain": jnp.array(4.0),
         "out_bias": jnp.array(-1.0986123),  # logit(0.25)
-        # Trainable initial states (resting/baseline activity for each area).
-        "x_c0_U": jnp.ones((n_c_U,)) * 0.1,
-        "x_c0_L": jnp.ones((n_c_L,)) * 0.1,
-        "x_c0_inh": jnp.ones((n_c_inh,)) * 0.1,
-        "x_d10":  jnp.ones((n_d1,))  * 0.1,
-        "x_d20":  jnp.ones((n_d2,))  * 0.1,
-        "x_snc0": jnp.ones((n_snc,)) * 0.1,
-        "x_gpe0": jnp.ones((n_gpe,)) * 0.1,
-        "x_stn0": jnp.ones((n_stn,)) * 0.1,
-        "x_snr0": jnp.ones((n_snr,)) * 0.1,
-        "x_sc0":  jnp.ones((n_sc,))  * 0.1,
-        "x_t0_exc": jnp.ones((n_t_exc,)) * 0.3,
-        "x_t0_inh": jnp.ones((n_t_inh,)) * 0.3,
-        "x_med0": jnp.ones((n_med,)) * 0.1,
-        # Trainable PKA initial states. Start low so the leaky integrator
-        # builds toward its steady state during the trial instead of starting
-        # already near saturation.
-        "pka_d10": jnp.ones((n_d1,)) * 0.3,
-        "pka_d20": jnp.ones((n_d2,)) * 0.3,
+        # Trainable initial states (resting/baseline activity per area); the
+        # starting values are declared centrally (config_script.CBT_INIT_STATE).
+        "x_c0_U": jnp.ones((n_c_U,)) * _is["x_c0_U"],
+        "x_c0_L": jnp.ones((n_c_L,)) * _is["x_c0_L"],
+        "x_c0_inh": jnp.ones((n_c_inh,)) * _is["x_c0_inh"],
+        "x_d10":  jnp.ones((n_d1,))  * _is["x_d10"],
+        "x_d20":  jnp.ones((n_d2,))  * _is["x_d20"],
+        "x_snc0": jnp.ones((n_snc,)) * _is["x_snc0"],
+        "x_gpe0": jnp.ones((n_gpe,)) * _is["x_gpe0"],
+        "x_stn0": jnp.ones((n_stn,)) * _is["x_stn0"],
+        "x_snr0": jnp.ones((n_snr,)) * _is["x_snr0"],
+        "x_sc0":  jnp.ones((n_sc,))  * _is["x_sc0"],
+        "x_t0_exc": jnp.ones((n_t_exc,)) * _is["x_t0_exc"],
+        "x_t0_inh": jnp.ones((n_t_inh,)) * _is["x_t0_inh"],
+        "x_med0": jnp.ones((n_med,)) * _is["x_med0"],
+        "pka_d10": jnp.ones((n_d1,)) * _is["pka_d10"],
+        "pka_d20": jnp.ones((n_d2,)) * _is["pka_d20"],
         # Adenosine: one tunable tonic level k_a (scalar — will become a
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
@@ -354,12 +353,7 @@ def init_params(rng_key, n_input):
 
 
 def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None):
-    # Initial states: prefer params (trainable); fall back to config for legacy bundles.
-    def _x0(key, fallback):
-        if key in params:
-            return jnp.asarray(params[key])
-        return jnp.asarray(config.get(key, fallback))
-
+    # Per-area unit counts (used by the fan-in normalizations below).
     n_c_U_   = params["J_cU"].shape[0]
     n_c_L_   = params["J_cL"].shape[0]
     n_c_inh_ = params["J_c_ii"].shape[0]
@@ -374,21 +368,23 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     n_t_inh_ = params["J_t_ii"].shape[0]
     n_med_   = params["J_med_w1"].shape[0] * 2
 
-    x_c0_U   = _x0("x_c0_U",   jnp.ones(n_c_U_)   * 0.2)
-    x_c0_L   = _x0("x_c0_L",   jnp.ones(n_c_L_)   * 0.2)
-    x_c0_inh = _x0("x_c0_inh", jnp.ones(n_c_inh_) * 0.2)
-    x_d10    = _x0("x_d10",    jnp.ones(n_d1_)    * 0.2)
-    x_d20    = _x0("x_d20",    jnp.ones(n_d2_)    * 0.2)
-    x_snc0   = _x0("x_snc0",   jnp.ones(n_snc_)   * 0.5)
-    x_gpe0   = _x0("x_gpe0",   jnp.ones(n_gpe_)   * 0.5)
-    x_stn0   = _x0("x_stn0",   jnp.ones(n_stn_)   * 0.1)
-    x_sc0    = _x0("x_sc0",    jnp.ones(n_sc_)    * 0.1)
-    x_snr0   = _x0("x_snr0",   jnp.ones(n_snr_)   * 0.4)
-    x_t0_exc = _x0("x_t0_exc", jnp.ones(n_t_exc_) * 0.5)
-    x_t0_inh = _x0("x_t0_inh", jnp.ones(n_t_inh_) * 0.5)
-    x_med0   = _x0("x_med0",   jnp.ones(n_med_)   * 0.2)
-    pka_d10  = _x0("pka_d10",  jnp.ones(n_d1_)    * 0.2)
-    pka_d20  = _x0("pka_d20",  jnp.ones(n_d2_)    * 0.2)
+    # Trainable initial states come straight from params (crashes if absent — no
+    # fallback); their starting values were set from config_script.CBT_INIT_STATE.
+    x_c0_U   = jnp.asarray(params["x_c0_U"])
+    x_c0_L   = jnp.asarray(params["x_c0_L"])
+    x_c0_inh = jnp.asarray(params["x_c0_inh"])
+    x_d10    = jnp.asarray(params["x_d10"])
+    x_d20    = jnp.asarray(params["x_d20"])
+    x_snc0   = jnp.asarray(params["x_snc0"])
+    x_gpe0   = jnp.asarray(params["x_gpe0"])
+    x_stn0   = jnp.asarray(params["x_stn0"])
+    x_sc0    = jnp.asarray(params["x_sc0"])
+    x_snr0   = jnp.asarray(params["x_snr0"])
+    x_t0_exc = jnp.asarray(params["x_t0_exc"])
+    x_t0_inh = jnp.asarray(params["x_t0_inh"])
+    x_med0   = jnp.asarray(params["x_med0"])
+    pka_d10  = jnp.asarray(params["pka_d10"])
+    pka_d20  = jnp.asarray(params["pka_d20"])
 
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
