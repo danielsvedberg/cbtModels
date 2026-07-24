@@ -32,23 +32,7 @@ def main():
         n_stn = params["J_stn"].shape[0]
         n_t_exc = params["J_t_ee"].shape[0]
         n_t_inh = params["J_t_ii"].shape[0]
-        _, config = cbtl.init_params(
-            jr.PRNGKey(0),
-            n_c_U=n_c_U,
-            n_c_L=n_c_L,
-            n_c_inh=n_c_inh,
-            n_d1=n_d1,
-            n_d2=n_d2,
-            n_snc=n_snc,
-            n_snr=n_snr,
-            n_gpe=n_gpe,
-            n_stn=n_stn,
-            n_t_exc=n_t_exc,
-            n_t_inh=n_t_inh,
-            n_input=1,
-            n_output=1,
-            noise_std=cfg.RNN_CONFIG["noise_std"],
-        )
+        _, config = cbtl.init_params(jr.PRNGKey(0), n_input=1)
 
     starts = cfg.TEST_CONFIG["start_t"][:4]
     inputs, _, _ = stmt.self_timed_movement_task(

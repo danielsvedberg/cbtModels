@@ -265,7 +265,7 @@ def _build_test_inputs(task_cfg, starts):
         "T_movement": task_cfg["t_movement"],
         "T": task_cfg["t_total"],
     }
-    mode = task_cfg.get("task_mode", "self_timed")
+    mode = task_cfg["task_mode"]
     if mode == "hybrid":
         return stmt.hybrid_stmt(**kwargs)
     if mode == "pavlovian":
@@ -317,24 +317,7 @@ def _load_bundle():
         return bundle["params"], bundle["config"]
 
     params = bundle
-    _, config = cbtl.init_params(
-        jr.PRNGKey(0),
-        n_c_U=params["J_cU"].shape[0],
-        n_c_L=params["J_cL"].shape[0],
-        n_c_inh=params["J_c_ii"].shape[0],
-        n_d1=params["J_d1"].shape[0],
-        n_d2=params["J_d2"].shape[0],
-        n_snc=params["P_snc"].shape[0],
-        n_snr=params["P_snr"].shape[0],
-        n_gpe=params["J_gpe"].shape[0],
-        n_stn=params["J_stn"].shape[0],
-        n_t_exc=params["J_t_ee"].shape[0],
-        n_t_inh=params["J_t_ii"].shape[0],
-        n_med=params["J_med_w1"].shape[0] * 2,
-        n_input=1,
-        n_output=1,
-        noise_std=cfg.RNN_CONFIG["noise_std"],
-    )
+    _, config = cbtl.init_params(jr.PRNGKey(0), n_input=1)
     return params, config
 
 
@@ -421,11 +404,11 @@ def train_pd_experiment(num_iters=2000, save_path=None):
         seed=train_cfg["seed"],
         baseline_momentum=rl_cfg["baseline_momentum"],
         entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+        objective_mode=rl_cfg["objective_mode"],
         batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
+        brevity_coef=rl_cfg["brevity_coef"],
+        silence_coef=rl_cfg["silence_coef"],
+        tail_coef=rl_cfg["tail_coef"],
     )
     # Persist the lesion in the saved bundle (defense against optimizer drift).
     best_params = lesion_nigrostriatal(best_params)

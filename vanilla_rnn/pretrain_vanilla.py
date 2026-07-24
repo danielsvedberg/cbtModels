@@ -108,13 +108,7 @@ def main():
         task["t_total"],
     )
 
-    params, config = vr.init_params(
-        jr.PRNGKey(pretrain_cfg["seed"]),
-        n_hidden=rnn_cfg["n_hidden"],
-        n_input=inputs.shape[-1],
-        n_output=1,
-        noise_std=rnn_cfg["noise_std"],
-    )
+    params, config = vr.init_params(jr.PRNGKey(pretrain_cfg["seed"]), n_input=inputs.shape[-1])
 
     optimizer = optax.adam(cfg.OPTIM_CONFIG["learning_rate"])
 
@@ -136,11 +130,11 @@ def main():
         seed=pretrain_cfg["seed"],
         baseline_momentum=rl_cfg["baseline_momentum"],
         entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+        objective_mode=rl_cfg["objective_mode"],
         batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
+        brevity_coef=rl_cfg["brevity_coef"],
+        silence_coef=rl_cfg["silence_coef"],
+        tail_coef=rl_cfg["tail_coef"],
     )
 
     out_path = cfg.pretrain_params_path()

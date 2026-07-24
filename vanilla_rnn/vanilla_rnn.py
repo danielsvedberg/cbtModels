@@ -20,24 +20,17 @@ if str(ROOT) not in sys.path:
 import self_timed_movement_task as stmt
 
 
-def init_params(
-    rng_key,
-    n_hidden=None,
-    n_input=1,
-    n_output=1,
-    rec_scale=None,
-    in_scale=None,
-    out_scale=None,
-    noise_std=None,
-):
-    # Architecture defaults are declared centrally (config_script).
+def init_params(rng_key, n_input):
+    # Every value comes from the central config (crashes on a missing key — no
+    # silent defaults). n_input is the only per-call argument (task-derived).
     import config_script as _rootcfg
     _rc, _rt = _rootcfg.VANILLA_RNN_CONFIG, _rootcfg.VANILLA_RUNTIME_CONFIG
-    n_hidden = _rc["n_hidden"] if n_hidden is None else n_hidden
-    noise_std = _rc["noise_std"] if noise_std is None else noise_std
-    rec_scale = _rt["rec_scale"] if rec_scale is None else rec_scale
-    in_scale = _rt["in_scale"] if in_scale is None else in_scale
-    out_scale = _rt["out_scale"] if out_scale is None else out_scale
+    n_hidden = _rc["n_hidden"]
+    n_output = _rc["n_output"]
+    noise_std = _rc["noise_std"]
+    rec_scale = _rt["rec_scale"]
+    in_scale = _rt["in_scale"]
+    out_scale = _rt["out_scale"]
     k1, k2, k3 = jr.split(rng_key, 3)
     params = {
         "w_rec": rec_scale * jr.normal(k1, (n_hidden, n_hidden)),

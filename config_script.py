@@ -156,6 +156,8 @@ CBT_RNN_CONFIG = {
     "g_nm": 1.0,
     "noise_std": 0.01,
     "balanced_init": False,
+    "balanced_target_rho": 0.997,
+    "persistent_self_gain": None,
 }
 
 # init_params runtime dict (biophysical constants). Built into `config` by
@@ -189,32 +191,6 @@ CBT_RUNTIME_CONFIG = {
     "stn_pacer_max": 0.3,
 }
 
-# init_params SIGNATURE defaults (fallbacks when a caller omits a kwarg). Kept
-# equal to the canonical RNN_CONFIG so defaults never diverge from it.
-CBT_INIT_DEFAULTS = {
-    "n_c_U": CBT_RNN_CONFIG["n_c_U"],
-    "n_c_L": CBT_RNN_CONFIG["n_c_L"],
-    "n_c_inh": CBT_RNN_CONFIG["n_c_inh"],
-    "n_d1": CBT_RNN_CONFIG["n_d1"],
-    "n_d2": CBT_RNN_CONFIG["n_d2"],
-    "n_snc": CBT_RNN_CONFIG["n_snc"],
-    "n_snr": CBT_RNN_CONFIG["n_snr"],
-    "n_gpe": CBT_RNN_CONFIG["n_gpe"],
-    "n_stn": CBT_RNN_CONFIG["n_stn"],
-    "n_sc": CBT_RNN_CONFIG["n_sc"],
-    "n_t_exc": CBT_RNN_CONFIG["n_t_exc"],
-    "n_t_inh": CBT_RNN_CONFIG["n_t_inh"],
-    "n_med": CBT_RNN_CONFIG["n_med"],
-    "n_input": CBT_RNN_CONFIG["n_input"],
-    "n_output": CBT_RNN_CONFIG["n_output"],
-    "g_bg": CBT_RNN_CONFIG["g_bg"],
-    "g_nm": CBT_RNN_CONFIG["g_nm"],
-    "noise_std": CBT_RNN_CONFIG["noise_std"],
-    "balanced_init": CBT_RNN_CONFIG["balanced_init"],
-    "balanced_target_rho": 0.997,
-    "persistent_self_gain": None,
-}
-
 # Architecture-unique keys per CBT family (nuclei dropped; extra runtime keys).
 _CBT_FAMILY_STRUCTURE = {
     "cbt_loop": {"drop_rnn": (), "extra_runtime": {}},
@@ -234,6 +210,7 @@ _CBT_FAMILY_STRUCTURE = {
 CORTICOTHALAMIC_RNN_CONFIG = {
     "n_ctx": 30,
     "n_t": 30,
+    "n_output": 1,
     "noise_std": 0.01,
 }
 CORTICOTHALAMIC_RUNTIME_CONFIG = {
@@ -248,6 +225,7 @@ CORTICOTHALAMIC_RUNTIME_CONFIG = {
 # --- vanilla (single hidden layer RNN; architecture-specific) ---
 VANILLA_RNN_CONFIG = {
     "n_hidden": 32,
+    "n_output": 1,
     "noise_std": 0.01,
 }
 VANILLA_RUNTIME_CONFIG = {

@@ -32,14 +32,7 @@ def main():
     else:
         inputs, targets, masks = stmt.self_timed_movement_task(**task_kwargs)
 
-    params, config = ctrnn.init_params(
-        jr.PRNGKey(train_cfg["seed"]),
-        n_ctx=cfg.RNN_CONFIG["n_ctx"],
-        n_t=cfg.RNN_CONFIG["n_t"],
-        n_input=inputs.shape[-1],
-        n_output=1,
-        noise_std=cfg.RNN_CONFIG["noise_std"],
-    )
+    params, config = ctrnn.init_params(jr.PRNGKey(train_cfg["seed"]), n_input=inputs.shape[-1])
 
     optimizer = optax.adam(cfg.OPTIM_CONFIG["learning_rate"])
     best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -54,11 +47,11 @@ def main():
         seed=train_cfg["seed"],
         baseline_momentum=rl_cfg["baseline_momentum"],
         entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+        objective_mode=rl_cfg["objective_mode"],
         batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
+        brevity_coef=rl_cfg["brevity_coef"],
+        silence_coef=rl_cfg["silence_coef"],
+        tail_coef=rl_cfg["tail_coef"],
     )
 
     out_path = cfg.params_path()

@@ -29,13 +29,7 @@ def build():
     rc = cfg.RNN_CONFIG; tc = cfg.PAVLOVIAN_CONFIG
     inputs, targets, masks = stmt.pavlovian_task(
         T_start=tc["t_start"], T_cue=tc["t_cue"], T_response=tc["t_response"], T=tc["t_total"])
-    params, config = cbtl.init_params(
-        jr.PRNGKey(cfg.TRAINING_CONFIG["seed"]),
-        n_c_U=rc["n_c_U"], n_c_L=rc["n_c_L"], n_c_inh=rc["n_c_inh"],
-        n_d1=rc["n_d1"], n_d2=rc["n_d2"], n_snc=rc["n_snc"], n_snr=rc["n_snr"],
-        n_gpe=rc["n_gpe"], n_t_exc=rc["n_t_exc"], n_t_inh=rc["n_t_inh"],
-        n_input=inputs.shape[-1], n_output=1,
-        g_bg=rc["g_bg"], g_nm=rc["g_nm"], noise_std=rc["noise_std"])
+    params, config = cbtl.init_params(jr.PRNGKey(cfg.TRAINING_CONFIG["seed"]), n_input=inputs.shape[-1])
     return params, config, inputs, targets, masks
 
 

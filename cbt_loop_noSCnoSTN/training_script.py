@@ -21,7 +21,7 @@ def _build_task(task_cfg):
         "T_movement": task_cfg["t_movement"],
         "T": task_cfg["t_total"],
     }
-    mode = task_cfg.get("task_mode", "self_timed")
+    mode = task_cfg["task_mode"]
     if mode == "hybrid":
         return stmt.hybrid_stmt(**task_kwargs)
     if mode == "pavlovian":
@@ -37,24 +37,7 @@ def main():
 
     inputs, targets, masks = _build_task(task_cfg)
 
-    params, config = cbtl.init_params(
-        jr.PRNGKey(train_cfg["seed"]),
-        n_c_U=rnn_cfg["n_c_U"],
-        n_c_L=rnn_cfg["n_c_L"],
-        n_c_inh=rnn_cfg["n_c_inh"],
-        n_d1=rnn_cfg["n_d1"],
-        n_d2=rnn_cfg["n_d2"],
-        n_snc=rnn_cfg["n_snc"],
-        n_snr=rnn_cfg["n_snr"],
-        n_gpe=rnn_cfg["n_gpe"],
-        n_t_exc=rnn_cfg["n_t_exc"],
-        n_t_inh=rnn_cfg["n_t_inh"],
-        n_input=inputs.shape[-1],
-        n_output=1,
-        g_bg=rnn_cfg["g_bg"],
-        g_nm=rnn_cfg["g_nm"],
-        noise_std=rnn_cfg["noise_std"],
-    )
+    params, config = cbtl.init_params(jr.PRNGKey(train_cfg["seed"]), n_input=inputs.shape[-1])
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
@@ -73,19 +56,19 @@ def main():
         seed=train_cfg["seed"],
         baseline_momentum=rl_cfg["baseline_momentum"],
         entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+        objective_mode=rl_cfg["objective_mode"],
         batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
-        asym_coef=rl_cfg.get("asym_coef", 0.0),
-        asym_margin=rl_cfg.get("asym_margin", 1.0),
-        rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-        rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
-        dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
-        dead_area_min=rl_cfg.get("dead_area_min", 0.0),
-        dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
-        dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.1),
+        brevity_coef=rl_cfg["brevity_coef"],
+        silence_coef=rl_cfg["silence_coef"],
+        tail_coef=rl_cfg["tail_coef"],
+        asym_coef=rl_cfg["asym_coef"],
+        asym_margin=rl_cfg["asym_margin"],
+        rest_pka_coef=rl_cfg["rest_pka_coef"],
+        rest_pka_margin=rl_cfg["rest_pka_margin"],
+        dead_area_coef=rl_cfg["dead_area_coef"],
+        dead_area_min=rl_cfg["dead_area_min"],
+        dead_proj_coef=rl_cfg["dead_proj_coef"],
+        dead_proj_floor=rl_cfg["dead_proj_floor"],
     )
 
     out_path = cfg.params_path()

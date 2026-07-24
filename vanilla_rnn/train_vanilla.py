@@ -97,20 +97,10 @@ def main():
         with pretrain_path.open("rb") as f:
             params = pkl.load(f)
         print(f"Loaded pretrained params from: {pretrain_path}")
-        _, config = vr.init_params(
-            jr.PRNGKey(train_cfg["seed"]),
-            n_hidden=cfg.RNN_CONFIG["n_hidden"],
-            n_input=inputs.shape[-1],
-            n_output=1,
-        )
+        _, config = vr.init_params(jr.PRNGKey(train_cfg["seed"]), n_input=inputs.shape[-1])
     else:
     '''
-    params, config = vr.init_params(
-        jr.PRNGKey(train_cfg["seed"]),
-        n_hidden=cfg.RNN_CONFIG["n_hidden"],
-        n_input=inputs.shape[-1],
-        n_output=1,
-    )
+    params, config = vr.init_params(jr.PRNGKey(train_cfg["seed"]), n_input=inputs.shape[-1])
     print("No pretrained params found; training from scratch.")
 
     optimizer = optax.adam(cfg.OPTIM_CONFIG["learning_rate"])
@@ -132,11 +122,11 @@ def main():
         seed=train_cfg["seed"],
         baseline_momentum=rl_cfg["baseline_momentum"],
         entropy_coef=rl_cfg["entropy_coef"],
-        objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+        objective_mode=rl_cfg["objective_mode"],
         batch_targets=targets,
-        brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-        silence_coef=rl_cfg.get("silence_coef", 0.0),
-        tail_coef=rl_cfg.get("tail_coef", 0.0),
+        brevity_coef=rl_cfg["brevity_coef"],
+        silence_coef=rl_cfg["silence_coef"],
+        tail_coef=rl_cfg["tail_coef"],
     )
 
     out_path = cfg.pretrain_params_path()

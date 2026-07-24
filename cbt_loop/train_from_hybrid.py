@@ -118,24 +118,7 @@ def main():
         config = bundle["config"]
     else:
         params = bundle
-        _, config = cbtl.init_params(
-            jr.PRNGKey(0),
-            n_c_U=params["J_cU"].shape[0],
-            n_c_L=params["J_cL"].shape[0],
-            n_c_inh=params["J_c_ii"].shape[0],
-            n_d1=params["J_d1"].shape[0],
-            n_d2=params["J_d2"].shape[0],
-            n_snc=params["P_snc"].shape[0],
-            n_snr=params["P_snr"].shape[0],
-            n_gpe=params["J_gpe"].shape[0],
-            n_stn=params["J_stn"].shape[0],
-            n_t_exc=params["J_t_ee"].shape[0],
-            n_t_inh=params["J_t_ii"].shape[0],
-            n_med=params["J_med_w1"].shape[0] * 2,
-            n_input=1,
-            n_output=1,
-            noise_std=rnn_cfg["noise_std"],
-        )
+        _, config = cbtl.init_params(jr.PRNGKey(0), n_input=1)
 
     # Ensure dual cue→cortex weights (kept as-is from hybrid; re-randomized only
     # for a legacy single-column bundle).
@@ -151,7 +134,7 @@ def main():
         optax.adamw(learning_rate=cfg.OPTIM_CONFIG["learning_rate"]),
     )
 
-    mode = train_cfg.get("mode", "reinforce")
+    mode = train_cfg["mode"]
     if mode == "supervised":
         # Dense supervised regression onto the target trajectory; structural
         # priors carried over from RL_CONFIG.
@@ -166,21 +149,21 @@ def main():
             batch_targets=targets,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
-            loss_type=train_cfg.get("loss_type", "bce"),
-            asym_coef=rl_cfg.get("asym_coef", 0.0),
-            asym_margin=rl_cfg.get("asym_margin", 1.0),
-            rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
-            pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
-            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
-            c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
-            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
-            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
-            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
-            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
-            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
-            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
-            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.1),
+            loss_type=train_cfg["loss_type"],
+            asym_coef=rl_cfg["asym_coef"],
+            asym_margin=rl_cfg["asym_margin"],
+            rest_pka_coef=rl_cfg["rest_pka_coef"],
+            rest_pka_margin=rl_cfg["rest_pka_margin"],
+            pathway_floor_coef=rl_cfg["pathway_floor_coef"],
+            pathway_floor_min=rl_cfg["pathway_floor_min"],
+            c_snc_floor_coef=rl_cfg["c_snc_floor_coef"],
+            c_snc_floor_min=rl_cfg["c_snc_floor_min"],
+            gpe_floor_coef=rl_cfg["gpe_floor_coef"],
+            gpe_floor_min=rl_cfg["gpe_floor_min"],
+            dead_area_coef=rl_cfg["dead_area_coef"],
+            dead_area_min=rl_cfg["dead_area_min"],
+            dead_proj_coef=rl_cfg["dead_proj_coef"],
+            dead_proj_floor=rl_cfg["dead_proj_floor"],
         )
     else:
         best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -195,25 +178,25 @@ def main():
             seed=train_cfg["seed"],
             baseline_momentum=rl_cfg["baseline_momentum"],
             entropy_coef=rl_cfg["entropy_coef"],
-            objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+            objective_mode=rl_cfg["objective_mode"],
             batch_targets=targets,
-            brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-            silence_coef=rl_cfg.get("silence_coef", 0.0),
-            tail_coef=rl_cfg.get("tail_coef", 0.0),
-            asym_coef=rl_cfg.get("asym_coef", 0.0),
-            asym_margin=rl_cfg.get("asym_margin", 1.0),
-            rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
-            pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
-            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
-            c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
-            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
-            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
-            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
-            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
-            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
-            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
-            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.1),
+            brevity_coef=rl_cfg["brevity_coef"],
+            silence_coef=rl_cfg["silence_coef"],
+            tail_coef=rl_cfg["tail_coef"],
+            asym_coef=rl_cfg["asym_coef"],
+            asym_margin=rl_cfg["asym_margin"],
+            rest_pka_coef=rl_cfg["rest_pka_coef"],
+            rest_pka_margin=rl_cfg["rest_pka_margin"],
+            pathway_floor_coef=rl_cfg["pathway_floor_coef"],
+            pathway_floor_min=rl_cfg["pathway_floor_min"],
+            c_snc_floor_coef=rl_cfg["c_snc_floor_coef"],
+            c_snc_floor_min=rl_cfg["c_snc_floor_min"],
+            gpe_floor_coef=rl_cfg["gpe_floor_coef"],
+            gpe_floor_min=rl_cfg["gpe_floor_min"],
+            dead_area_coef=rl_cfg["dead_area_coef"],
+            dead_area_min=rl_cfg["dead_area_min"],
+            dead_proj_coef=rl_cfg["dead_proj_coef"],
+            dead_proj_floor=rl_cfg["dead_proj_floor"],
         )
 
     out_path = cfg.shaped_params_path()

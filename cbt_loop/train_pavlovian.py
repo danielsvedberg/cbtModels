@@ -37,33 +37,14 @@ def main():
 
     inputs, targets, masks = _build_pavlovian_task(task_cfg)
 
-    params, config = cbtl.init_params(
-        jr.PRNGKey(train_cfg["seed"]),
-        n_c_U=rnn_cfg["n_c_U"],
-        n_c_L=rnn_cfg["n_c_L"],
-        n_c_inh=rnn_cfg["n_c_inh"],
-        n_d1=rnn_cfg["n_d1"],
-        n_d2=rnn_cfg["n_d2"],
-        n_snc=rnn_cfg["n_snc"],
-        n_snr=rnn_cfg["n_snr"],
-        n_gpe=rnn_cfg["n_gpe"],
-        n_stn=rnn_cfg["n_stn"],
-        n_t_exc=rnn_cfg["n_t_exc"],
-        n_t_inh=rnn_cfg["n_t_inh"],
-        n_input=inputs.shape[-1],
-        n_output=1,
-        g_bg=rnn_cfg["g_bg"],
-        g_nm=rnn_cfg["g_nm"],
-        noise_std=rnn_cfg["noise_std"],
-        balanced_init=rnn_cfg.get("balanced_init", False),
-    )
+    params, config = cbtl.init_params(jr.PRNGKey(train_cfg["seed"]), n_input=inputs.shape[-1])
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
         optax.adamw(learning_rate=cfg.OPTIM_CONFIG["learning_rate"]),
     )
 
-    mode = train_cfg.get("mode", "reinforce")
+    mode = train_cfg["mode"]
     if mode == "supervised":
         # Dense supervised regression onto the target trajectory. Structural
         # priors are pulled from RL_CONFIG (off unless set there).
@@ -78,21 +59,21 @@ def main():
             batch_targets=targets,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
-            loss_type=train_cfg.get("loss_type", "bce"),
-            asym_coef=rl_cfg.get("asym_coef", 0.0),
-            asym_margin=rl_cfg.get("asym_margin", 1.0),
-            rest_pka_coef=rl_cfg.get("rest_pka_coef", 0.0),
-            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
-            pathway_floor_coef=rl_cfg.get("pathway_floor_coef", 0.0),
-            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
-            c_snc_floor_coef=rl_cfg.get("c_snc_floor_coef", 0.0),
-            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
-            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
-            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
-            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
-            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
-            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.0),
-            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.0),
+            loss_type=train_cfg["loss_type"],
+            asym_coef=rl_cfg["asym_coef"],
+            asym_margin=rl_cfg["asym_margin"],
+            rest_pka_coef=rl_cfg["rest_pka_coef"],
+            rest_pka_margin=rl_cfg["rest_pka_margin"],
+            pathway_floor_coef=rl_cfg["pathway_floor_coef"],
+            pathway_floor_min=rl_cfg["pathway_floor_min"],
+            c_snc_floor_coef=rl_cfg["c_snc_floor_coef"],
+            c_snc_floor_min=rl_cfg["c_snc_floor_min"],
+            gpe_floor_coef=rl_cfg["gpe_floor_coef"],
+            gpe_floor_min=rl_cfg["gpe_floor_min"],
+            dead_area_coef=rl_cfg["dead_area_coef"],
+            dead_area_min=rl_cfg["dead_area_min"],
+            dead_proj_coef=rl_cfg["dead_proj_coef"],
+            dead_proj_floor=rl_cfg["dead_proj_floor"],
         )
     else:
         best_params, losses, rewards = stmt.fit_rnn_reinforce(
@@ -107,29 +88,29 @@ def main():
             seed=train_cfg["seed"],
             baseline_momentum=rl_cfg["baseline_momentum"],
             entropy_coef=rl_cfg["entropy_coef"],
-            objective_mode=rl_cfg.get("objective_mode", "log_reward"),
+            objective_mode=rl_cfg["objective_mode"],
             batch_targets=targets,
-            brevity_coef=rl_cfg.get("brevity_coef", 0.0),
-            silence_coef=rl_cfg.get("silence_coef", 0.0),
-            tail_coef=rl_cfg.get("tail_coef", 0.0),
+            brevity_coef=rl_cfg["brevity_coef"],
+            silence_coef=rl_cfg["silence_coef"],
+            tail_coef=rl_cfg["tail_coef"],
             # Structural penalties disabled during Pavlovian: with tanh() wrapping
             # every inter-area projection, weight-norm-based floors no longer map
             # to effective drive (saturates at ~1 regardless of norm) and only push
             # weights into the dead-gradient zone. Re-enabled in train_from_pavlovian.
             asym_coef=0.0,
-            asym_margin=rl_cfg.get("asym_margin", 1.0),
+            asym_margin=rl_cfg["asym_margin"],
             rest_pka_coef=0.0,
-            rest_pka_margin=rl_cfg.get("rest_pka_margin", 1.0),
+            rest_pka_margin=rl_cfg["rest_pka_margin"],
             pathway_floor_coef=0.0,
-            pathway_floor_min=rl_cfg.get("pathway_floor_min", 1.0),
+            pathway_floor_min=rl_cfg["pathway_floor_min"],
             c_snc_floor_coef=0.0,
-            c_snc_floor_min=rl_cfg.get("c_snc_floor_min", 0.0),
-            gpe_floor_coef=rl_cfg.get("gpe_floor_coef", 0.0),
-            gpe_floor_min=rl_cfg.get("gpe_floor_min", 0.0),
-            dead_area_coef=rl_cfg.get("dead_area_coef", 0.0),
-            dead_area_min=rl_cfg.get("dead_area_min", 0.0),
-            dead_proj_coef=rl_cfg.get("dead_proj_coef", 0.1),
-            dead_proj_floor=rl_cfg.get("dead_proj_floor", 0.01),
+            c_snc_floor_min=rl_cfg["c_snc_floor_min"],
+            gpe_floor_coef=rl_cfg["gpe_floor_coef"],
+            gpe_floor_min=rl_cfg["gpe_floor_min"],
+            dead_area_coef=rl_cfg["dead_area_coef"],
+            dead_area_min=rl_cfg["dead_area_min"],
+            dead_proj_coef=rl_cfg["dead_proj_coef"],
+            dead_proj_floor=rl_cfg["dead_proj_floor"],
         )
 
     out_path = cfg.pavlovian_params_path()

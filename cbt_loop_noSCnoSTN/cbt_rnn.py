@@ -58,32 +58,33 @@ STATE_AREA_ORDER = (
 )
 
 
-def init_params(
-    rng_key,
-    n_c_U=5,
-    n_c_L=4,
-    n_c_inh=4,
-    n_d1=6,
-    n_d2=6,
-    n_snc=4,
-    n_snr=6,
-    n_gpe=6,
-    n_t_exc=9,
-    n_t_inh=3,
-    n_med=4,
-    n_input=1,
-    n_output=1,
-    g_bg=0.5,
-    g_nm=0.5,
-    noise_std=0.01,
-):
+def init_params(rng_key, n_input):
     """Initialize multiregion CBT loop params and runtime config.
 
     Cortex and thalamus follow Dale's law as fully separate populations:
     ``n_*_exc`` excitatory projection neurons and ``n_*_inh`` local inhibitory
     interneurons live in their own state vectors with their own connectivity
     blocks. Only the excitatory pool sends out-of-area projections.
+
+    Every structural/runtime value comes from the central config (crashes on a
+    missing key — no silent defaults). n_input is the only per-call argument.
     """
+    _rc = _rootcfg.rnn_config_for(_FAMILY)
+    n_c_U = _rc["n_c_U"]
+    n_c_L = _rc["n_c_L"]
+    n_c_inh = _rc["n_c_inh"]
+    n_d1 = _rc["n_d1"]
+    n_d2 = _rc["n_d2"]
+    n_snc = _rc["n_snc"]
+    n_snr = _rc["n_snr"]
+    n_gpe = _rc["n_gpe"]
+    n_t_exc = _rc["n_t_exc"]
+    n_t_inh = _rc["n_t_inh"]
+    n_med = _rc["n_med"]
+    n_output = _rc["n_output"]
+    g_bg = _rc["g_bg"]
+    g_nm = _rc["g_nm"]
+    noise_std = _rc["noise_std"]
     skeys = jr.split(rng_key, 60)
 
     # Fan-in scaling (adapted from the promising_version design):
@@ -243,7 +244,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
     rng_key, init_key, step_key = jr.split(rng_key, 3)
 
-    noise_std = jnp.asarray(config.get("noise_std", 0.0))
+    noise_std = jnp.asarray(config["noise_std"])
     x_c0_U = jnp.minimum(nln(x_c0_U + noise_std * jr.normal(init_key, x_c0_U.shape)), 0.5)
     x_c0_L = jnp.minimum(nln(x_c0_L + noise_std * jr.normal(init_key, x_c0_L.shape)), 0.5)
     x_c0_inh = jnp.minimum(nln(x_c0_inh + noise_std * jr.normal(init_key, x_c0_inh.shape)), 0.5)
@@ -309,14 +310,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # ≥ m_floor with a live gradient (no dead zone) for both DA and tonic
     # adenosine drives; k_a is the (currently scalar) adenosine level shared
     # by all SPNs.
-    #m_floor = config.get("m_floor", 0.1)
+    #m_floor = config["m_floor"]
     # Adenosine weights get their own floor so the tonic A1R/A2R drive can be
     # decoupled from the DA floor. The DA→D1 PKA term is structurally weak
     # (mean_snc is small), so a high shared floor pins A1R inhibition above it
     # and kills pka_d1. m_floor_a1 lets the A1R floor drop (revive D1) while
     # m_floor_a2 preserves the A2R drive that keeps pka_d2 alive.
-    #m_floor_a1 = config.get("m_floor_a1", m_floor)
-    #m_floor_a2 = config.get("m_floor_a2", m_floor)
+    #m_floor_a1 = config["m_floor_a1"]
+    #m_floor_a2 = config["m_floor_a2"]
     m_d1 = exc(params["m_d1"])# + m_floor
     m_d2 = exc(params["m_d2"]) #+ m_floor
     m_a1 = exc(params["m_a1"]) #+ m_floor_a1
@@ -344,48 +345,48 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     b_cL_med = exc(params["B_cL_med"])  # shape (n_med//2, n_c_L): cL → medulla E units only
     # SNr → Medulla E units: inhibitory with a minimum magnitude (floored exc,
     # negated) so each weight stays ≤ -snr_med_floor and the tonic gate persists.
-    #snr_med_floor = config.get("snr_med_floor", 0.01)
+    #snr_med_floor = config["snr_med_floor"]
     b_snr_med = -inh(params["B_snr_med"])# + snr_med_floor)  # shape (n_med//2, n_snr)
     c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
     # Readout gain/bias (fall back to constants for legacy bundles without them).
     #rb = params["rb"]
 
 
-    tau_c = config.get("tau_c", 5.0)
-    tau_d1 = config.get("tau_d1", tau_c)
-    tau_d2 = config.get("tau_d2", tau_c)
-    tau_t = config.get("tau_t", tau_c)
-    tau_snr = config.get("tau_snr", tau_c)
-    tau_gpe = config.get("tau_gpe", tau_c)
-    tau_snc = config.get("tau_snc", tau_c)
-    tau_pka_fall = config.get("tau_pka_fall", 1440.0)
-    tau_pka_rise = config.get("tau_pka_rise", 20.0)
+    tau_c = config["tau_c"]
+    tau_d1 = config["tau_d1"]
+    tau_d2 = config["tau_d2"]
+    tau_t = config["tau_t"]
+    tau_snr = config["tau_snr"]
+    tau_gpe = config["tau_gpe"]
+    tau_snc = config["tau_snc"]
+    tau_pka_fall = config["tau_pka_fall"]
+    tau_pka_rise = config["tau_pka_rise"]
     # Gain on the DA→PKA drive (tanh(da_pka_gain * m_d * mean_snc)). mean_snc is
     # small, so the raw DA term barely registers against tonic adenosine; a gain
     # >1 lets phasic DA actually drive D1 PKA (and inhibit D2 PKA) within range.
-    da_pka_gain = config.get("da_pka_gain", 1.0)
+    da_pka_gain = config["da_pka_gain"]
     
     # Tonic adenosine level: a single tunable scalar shared by both SPN
     # populations. Kept explicit so it can later be promoted to a dynamic
     # state (e.g. activity-dependent A1R/A2R modulation) without touching the
     # m_a1 / m_a2 connection weights. Sigmoid bound keeps k_a ∈ [floor, cap]
     # with a live gradient across the full range.
-    k_a_floor = config.get("k_a_floor", 0.01)
-    k_a_cap = config.get("k_a_cap", 1.0)
+    k_a_floor = config["k_a_floor"]
+    k_a_cap = config["k_a_cap"]
     k_a = k_a_floor + exc(jnp.asarray(params["k_a"])) * (k_a_cap - k_a_floor)
 
-    snc_pacer_max = config.get("snc_pacer_max", 0.4)
-    snc_pacer_min = config.get("snc_pacer_min", 0.1)
-    snr_pacer_max = config.get("snr_pacer_max", 0.8)
-    snr_pacer_min = config.get("snr_pacer_min", 0.2)
-    gpe_pacer_max = config.get("gpe_pacer_max", 0.8)
-    gpe_pacer_min = config.get("gpe_pacer_min", 0.2)
+    snc_pacer_max = config["snc_pacer_max"]
+    snc_pacer_min = config["snc_pacer_min"]
+    snr_pacer_max = config["snr_pacer_max"]
+    snr_pacer_min = config["snr_pacer_min"]
+    gpe_pacer_max = config["gpe_pacer_max"]
+    gpe_pacer_min = config["gpe_pacer_min"]
 
     snc_pacer = snc_pacer_min + sigmoid(p_snc) * (snc_pacer_max - snc_pacer_min)
     snr_pacer = snr_pacer_min + sigmoid(p_snr) * (snr_pacer_max - snr_pacer_min)
     gpe_pacer = gpe_pacer_min + sigmoid(p_gpe) * (gpe_pacer_max - gpe_pacer_min)
 
-    tau_med = config.get("tau_med", 5.0)
+    tau_med = config["tau_med"]
 
     n_steps = inputs.shape[0]
     n_d1_cells = j_d1.shape[0]
