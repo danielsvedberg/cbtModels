@@ -155,9 +155,17 @@ CBT_RNN_CONFIG = {
     "g_bg": 1.0,
     "g_nm": 1.0,
     "noise_std": 0.01,
-    "balanced_init": False,
-    "balanced_target_rho": 0.997,
-    "persistent_self_gain": None,
+    # Spectral-normalize the cortico-thalamic loop at init (loop_init.normalize_loop):
+    # scale the 17 loop blocks so rho of the update map M=(1-1/tau)I+(1/tau)W equals
+    # balanced_target_rho. Raw init is rho~1.76 -> the loop runs away until the sigmoid
+    # nln saturates, and saturated cortex (gain ~0.2) passes neither the cue forward nor
+    # the gradient backward, so the task gradient vanishes. Normalizing to ~1.0
+    # de-saturates cortex and restores a usable cue->output gradient (~1000x larger).
+    "balanced_init": True,
+    # TUNING KNOB, NOT TRAINED: applied once at init; never enters params, so the
+    # optimizer never sees it and there is no gradient w.r.t. it. Higher rho = longer
+    # memory (tau_eff = -1/ln(rho)) but closer to instability/saturation.
+    "balanced_target_rho": 1.0,
 }
 
 # init_params runtime dict (biophysical constants). Built into `config` by

@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 import self_timed_movement_task as stmt
 import config_script as _rootcfg
+import loop_init as _loop_init
 _FAMILY = Path(__file__).resolve().parent.name
 
 
@@ -63,91 +64,6 @@ STATE_AREA_ORDER = (
 )
 
 
-# Thalamocortical recurrent blocks (all 17), used by the balanced-init option.
-_TC_EXC_BLOCKS = ["J_cU", "J_cL", "B_cU_cL", "B_cL_cU", "J_cU_ci", "J_cL_ci",
-                  "J_t_ee", "J_t_ie", "B_t_cU", "B_t_c_inh", "B_cU_t_exc", "B_cU_t_inh"]
-_TC_INH_BLOCKS = ["J_ci_cU", "J_ci_cL", "J_c_ii", "J_t_ei", "J_t_ii"]
-
-
-def _tc_recurrent_matrix(p, n_cU, n_cL, n_cI, n_tE, n_tI):
-    """Dense signed recurrent matrix of the cortico-thalamic loop (state order
-    cU, cL, cI, tE, tI) built from params (exc=|w|, inh=-|w|)."""
-    sizes = [("cU", n_cU), ("cL", n_cL), ("cI", n_cI), ("tE", n_tE), ("tI", n_tI)]
-    idx, off = {}, 0
-    for nm, sz in sizes:
-        idx[nm] = slice(off, off + sz); off += sz
-    W = np.zeros((off, off))
-    E = lambda k: np.abs(np.asarray(p[k]))
-    I = lambda k: -np.abs(np.asarray(p[k]))
-    W[idx["cU"], idx["cU"]] = E("J_cU");    W[idx["cU"], idx["cL"]] = E("B_cL_cU")
-    W[idx["cU"], idx["cI"]] = I("J_ci_cU"); W[idx["cU"], idx["tE"]] = E("B_t_cU")
-    W[idx["cL"], idx["cL"]] = E("J_cL");    W[idx["cL"], idx["cU"]] = E("B_cU_cL")
-    W[idx["cL"], idx["cI"]] = I("J_ci_cL")
-    W[idx["cI"], idx["cU"]] = E("J_cU_ci"); W[idx["cI"], idx["cL"]] = E("J_cL_ci")
-    W[idx["cI"], idx["cI"]] = I("J_c_ii");  W[idx["cI"], idx["tE"]] = E("B_t_c_inh")
-    W[idx["tE"], idx["tE"]] = E("J_t_ee");  W[idx["tE"], idx["tI"]] = I("J_t_ei")
-    W[idx["tE"], idx["cU"]] = E("B_cU_t_exc")
-    W[idx["tI"], idx["tE"]] = E("J_t_ie");  W[idx["tI"], idx["tI"]] = I("J_t_ii")
-    W[idx["tI"], idx["cU"]] = E("B_cU_t_inh")
-    return W
-
-
-def _balanced_thalamocortical_init(params, n_cU, n_cL, n_cI, n_tE, n_tI,
-                                   tau=10.0, target_rho=0.95, persistent_self_gain=None):
-    """Put the Dale's-law cortico-thalamic loop into a near-critical regime:
-      (1) matched 1/sqrt(n) scaling for the excitatory 1/n blocks (E->I, cross-area);
-      (2) per-row E/I balance -- each cell's local inhibition is rescaled to cancel
-          its total excitation (net recurrent drive -> 0, kills the mean-mode outlier);
-      (3) spectral-radius normalization -- scale all loop weights so the update map
-          J = (1-1/tau)I + (1/tau)W has spectral radius = target_rho.
-      (4) persistent activity (if persistent_self_gain is not None): set the
-          excitatory self-recurrence diagonal so each E unit is a leaky integrator
-          with effective self-gain = persistent_self_gain, i.e. it HOLDS a cue-evoked
-          bump across the delay. A positive unit feeding itself stays in nln's linear
-          band, so this survives the rectification that collapses distributed modes.
-    Only thalamocortical blocks are touched. Returns (params, realized_rho)."""
-    p = dict(params)
-    # (1) matched scaling: g/n -> g/sqrt(n) on the excitatory 1/n blocks.
-    for k, pre_n in (("J_cU_ci", n_cU), ("J_cL_ci", n_cL), ("J_t_ie", n_tE),
-                     ("B_t_cU", n_tE), ("B_t_c_inh", n_tE),
-                     ("B_cU_t_exc", n_cU), ("B_cU_t_inh", n_cU)):
-        p[k] = p[k] * math.sqrt(pre_n)
-    # (2) per-row balance: local inhibition cancels total excitation, per cell.
-    aE = lambda k: np.abs(np.asarray(p[k]))
-    exc_tot = {
-        "J_ci_cU": aE("J_cU").sum(1) + aE("B_cL_cU").sum(1) + aE("B_t_cU").sum(1),
-        "J_ci_cL": aE("J_cL").sum(1) + aE("B_cU_cL").sum(1),
-        "J_c_ii":  aE("J_cU_ci").sum(1) + aE("J_cL_ci").sum(1) + aE("B_t_c_inh").sum(1),
-        "J_t_ei":  aE("J_t_ee").sum(1) + aE("B_cU_t_exc").sum(1),
-        "J_t_ii":  aE("J_t_ie").sum(1) + aE("B_cU_t_inh").sum(1),
-    }
-    for k, Etot in exc_tot.items():
-        Itot = aE(k).sum(1)
-        f = np.where(Itot > 1e-9, Etot / np.maximum(Itot, 1e-9), 1.0)
-        p[k] = p[k] * jnp.asarray(f)[:, None]
-    # (3) spectral-radius normalization (bisection on a global scale s).
-    lam = np.linalg.eigvals(_tc_recurrent_matrix(p, n_cU, n_cL, n_cI, n_tE, n_tI))
-    shift = 1.0 - 1.0 / tau
-    rho_J = lambda s: float(np.max(np.abs(shift + (s / tau) * lam)))
-    lo, hi = 1e-4, 20.0
-    for _ in range(50):
-        mid = 0.5 * (lo + hi)
-        if rho_J(mid) < target_rho:
-            lo = mid
-        else:
-            hi = mid
-    s = 0.5 * (lo + hi)
-    for k in _TC_EXC_BLOCKS + _TC_INH_BLOCKS:
-        p[k] = p[k] * s
-    # (4) persistent-activity integrator diagonal on the excitatory self-blocks.
-    if persistent_self_gain is not None:
-        d_val = tau * persistent_self_gain - (tau - 1.0)   # |J_ii| for target self-gain
-        for k, nk in (("J_cU", n_cU), ("J_cL", n_cL), ("J_t_ee", n_tE)):
-            di = jnp.arange(nk)
-            p[k] = jnp.asarray(p[k]).at[di, di].set(d_val)
-    # realized spectral radius of the final loop
-    lam_f = np.linalg.eigvals(_tc_recurrent_matrix(p, n_cU, n_cL, n_cI, n_tE, n_tI))
-    return p, float(np.max(np.abs(shift + (1.0 / tau) * lam_f)))
 
 
 def init_params(rng_key, n_input):
@@ -190,7 +106,6 @@ def init_params(rng_key, n_input):
     noise_std = _rc["noise_std"]
     balanced_init = _rc["balanced_init"]
     balanced_target_rho = _rc["balanced_target_rho"]
-    persistent_self_gain = _rc["persistent_self_gain"]
     skeys = jr.split(rng_key, 60)
 
     # Fan-in scaling (adapted from the promising_version design):
@@ -331,24 +246,19 @@ def init_params(rng_key, n_input):
     })
 
     if balanced_init:
-        # Steps 1-4: balance the Dale's-law cortico-thalamic loop and set it
-        # near-critical so it can hold/ramp a cue signal (see
-        # ../corticothalamic/stability_analysis.py).
-        config["tau_c"] = 10.0   # step 4: slower cortical integration
-        config["tau_t"] = 10.0   # loop spans thalamus too; keep tau uniform
-        # target_rho sets the loop's memory timescale tau_eff = -1/ln(rho). To hold
-        # a cue across the self-timed delay (~t_cue+t_wait steps) the mode must
-        # decay slowly: rho ~ exp(-1/delay). 0.95 (tau_eff~20) is far too fast;
-        # ~0.997 matches a ~300-step delay. Tunable via balanced_target_rho.
-        params, realized_rho = _balanced_thalamocortical_init(
+        # Spectral-normalize the cortico-thalamic loop so it starts near-critical
+        # instead of strongly super-critical (rho ~ 1.76 raw). Without this the
+        # loop grows until the sigmoid nln saturates; saturated cortex has ~zero
+        # local gain and passes neither the cue forward nor the gradient backward,
+        # so the task gradient vanishes. See ../loop_init.py and
+        # ../corticothalamic/{loop_criticality,loop_gradient,desaturate_sweep}.py.
+        # balanced_target_rho is a CONFIG CONSTANT applied once here, never trained.
+        params, rho0, rho1 = _loop_init.normalize_loop(
             params, n_c_U, n_c_L, n_c_inh, n_t_exc, n_t_inh,
             tau=config["tau_c"], target_rho=balanced_target_rho,
-            persistent_self_gain=persistent_self_gain,
         )
-        pg = f", persistent self-gain={persistent_self_gain}" if persistent_self_gain else ""
-        print(f"[balanced_init] thalamocortical loop rho(J) = {realized_rho:.3f} "
-              f"(target {balanced_target_rho}); matched scaling + per-row E/I balance, "
-              f"tau_c=tau_t=10{pg}.")
+        print(f"[balanced_init] cortico-thalamic loop rho(M): {rho0:.3f} -> {rho1:.3f} "
+              f"(target {balanced_target_rho}, tau={config['tau_c']})")
 
     return params, config
 

@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 import self_timed_movement_task as stmt
 import config_script as _rootcfg
+import loop_init as _loop_init
 _FAMILY = Path(__file__).resolve().parent.name
 
 
@@ -114,6 +115,8 @@ def init_params(rng_key, n_input):
     g_bg = _rc["g_bg"]
     g_nm = _rc["g_nm"]
     noise_std = _rc["noise_std"]
+    balanced_init = _rc["balanced_init"]
+    balanced_target_rho = _rc["balanced_target_rho"]
     skeys = jr.split(rng_key, 60)
 
     # Fan-in scaling (adapted from the promising_version design):
@@ -233,6 +236,21 @@ def init_params(rng_key, n_input):
         "n_t_inh": n_t_inh,
         "noise_std": noise_std,
     })
+    if balanced_init:
+        # Spectral-normalize the cortico-thalamic loop so it starts near-critical
+        # instead of strongly super-critical (rho ~ 1.76 raw). Without this the
+        # loop grows until the sigmoid nln saturates; saturated cortex has ~zero
+        # local gain and passes neither the cue forward nor the gradient backward,
+        # so the task gradient vanishes. See ../loop_init.py and
+        # ../corticothalamic/{loop_criticality,loop_gradient,desaturate_sweep}.py.
+        # balanced_target_rho is a CONFIG CONSTANT applied once here, never trained.
+        params, rho0, rho1 = _loop_init.normalize_loop(
+            params, n_c_U, n_c_L, n_c_inh, n_t_exc, n_t_inh,
+            tau=config["tau_c"], target_rho=balanced_target_rho,
+        )
+        print(f"[balanced_init] cortico-thalamic loop rho(M): {rho0:.3f} -> {rho1:.3f} "
+              f"(target {balanced_target_rho}, tau={config['tau_c']})")
+
     return params, config
 
 
