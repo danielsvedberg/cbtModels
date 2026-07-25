@@ -289,6 +289,9 @@ _CBT_FILENAMES = {
     "params": "params_shaped.pkl",
     "pavlovian": "params_pavlovian.pkl",
     "hybrid": "params_hybrid.pkl",
+    # hybrid trained FROM SCRATCH (init_params, no Pavlovian bootstrap); kept
+    # separate so it never clobbers the curriculum-trained params_hybrid.pkl.
+    "hybrid_scratch": "params_hybrid_scratch.pkl",
     "shaped": "params_shaped.pkl",
     "pretrain": "pretrain_params_vanilla.pkl",
 }
@@ -382,6 +385,7 @@ def for_family(family):
     ns.params_path = lambda: d / fn["params"]
     ns.pavlovian_params_path = lambda: d / fn["pavlovian"]
     ns.hybrid_params_path = lambda: d / fn["hybrid"]
+    ns.hybrid_scratch_params_path = lambda: d / fn["hybrid_scratch"]
     ns.shaped_params_path = lambda: d / fn["shaped"]
     ns.pretrain_params_path = lambda: d / fn["pretrain"]
 

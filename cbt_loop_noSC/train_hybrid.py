@@ -73,22 +73,20 @@ def _build_hybrid_batch():
     )
 
 
-def main():
-    train_cfg = cfg.TRAINING_CONFIG
-    rl_cfg = cfg.RL_CONFIG
-
+def _init_from_pavlovian():
+    """Curriculum start: load Pavlovian-trained params and split the cue column."""
     pav_path = cfg.pavlovian_params_path()
-    print(f"Loading Pavlovian parameters from {pav_path}...")
+    print(f"[init=pavlovian] loading Pavlovian parameters from {pav_path}...")
     try:
         with pav_path.open("rb") as f:
             bundle = pkl.load(f)
     except FileNotFoundError:
-        print("Error: Pavlovian params not found. Please run train_pavlovian.py first.")
+        print("Error: Pavlovian params not found. Please run train_pavlovian.py first,"
+              " or use --init scratch.")
         raise SystemExit(1)
 
     if isinstance(bundle, dict) and "params" in bundle and "config" in bundle:
-        params = bundle["params"]
-        config = bundle["config"]
+        params, config = bundle["params"], bundle["config"]
     else:
         params = bundle
         _, config = cbtl.init_params(jr.PRNGKey(0), n_input=1)
@@ -96,9 +94,36 @@ def main():
     # Give the preparatory cue and the Pavlovian/go cue separate input vectors.
     params = _make_dual_cue_weights(params, jr.PRNGKey(CUE_RERANDOM_SEED))
     print("Built dual cue->cortex weights B_cue_c (col 0 = preparatory, col 1 = Pavlovian/go).")
+    return params, config
+
+
+def _init_from_scratch(seed):
+    """From-scratch start: fresh init_params with the 2-channel cue layout, so the
+    hybrid task is learned without any Pavlovian bootstrap. Both cue columns are
+    randomly initialized (col 0 = preparatory, col 1 = go)."""
+    print("[init=scratch] building fresh params from init_params (no Pavlovian bootstrap)")
+    params, config = cbtl.init_params(jr.PRNGKey(seed), n_input=2)
+    return params, config
+
+
+def main(init="pavlovian", num_iters=None):
+    train_cfg = cfg.TRAINING_CONFIG
+    rl_cfg = cfg.RL_CONFIG
+
+    if init == "pavlovian":
+        params, config = _init_from_pavlovian()
+        out_path = cfg.hybrid_params_path()
+    elif init == "scratch":
+        params, config = _init_from_scratch(train_cfg["seed"])
+        out_path = cfg.hybrid_scratch_params_path()
+    else:
+        raise ValueError(f"init must be 'pavlovian' or 'scratch', got {init!r}")
+
+    n_iters = train_cfg["num_iters"] if num_iters is None else int(num_iters)
 
     inputs, targets, masks = _build_hybrid_batch()
     print(f"Hybrid batch: inputs {tuple(inputs.shape)} (2 cue channels: preparatory + go)")
+    print(f"Training {n_iters} iters -> {out_path.name}")
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
@@ -114,7 +139,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            train_cfg["num_iters"],
+            n_iters,
             batch_targets=targets,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
@@ -142,7 +167,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            train_cfg["num_iters"],
+            n_iters,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
             baseline_momentum=rl_cfg["baseline_momentum"],
@@ -168,7 +193,6 @@ def main():
             dead_proj_floor=rl_cfg["dead_proj_floor"],
         )
 
-    out_path = cfg.hybrid_params_path()
     with out_path.open("wb") as f:
         pkl.dump({"params": best_params, "config": config}, f)
 
@@ -181,4 +205,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--init", choices=("pavlovian", "scratch"), default="pavlovian",
+                    help="pavlovian: start from params_pavlovian.pkl (curriculum, default). "
+                         "scratch: start from a fresh init_params, no bootstrap.")
+    ap.add_argument("--iters", type=int, default=None,
+                    help="override TRAINING_CONFIG['num_iters'] for this run")
+    a = ap.parse_args()
+    main(init=a.init, num_iters=a.iters)
