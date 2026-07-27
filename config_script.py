@@ -85,10 +85,19 @@ RL_CONFIG = {
 
 TASK_CONFIG = {
     "task_mode": "self-timed",  # one of: self_timed, hybrid, pavlovian
-    "t_start": jr.randint(jr.PRNGKey(SEED_CONFIG["task_seed"]), shape=(100,), minval=50, maxval=400),
+    # t_start range widened and the movement window narrowed so that reward
+    # actually measures SELF-TIMING. With the old values (window 300, t_start in
+    # [50,400)) the per-trial reward windows overlapped so heavily that a single
+    # FIXED response time ignoring the cue scored 0.87 -- i.e. a model with zero
+    # timing ability looked near-perfect, and gradient descent duly took that
+    # shortcut (measured: slope 0.26, see docs/parameter_findings.md section 8).
+    # Ceiling ~ window / t_start_range: 100/490 -> ~0.20 (empirically ~0.25).
+    # t_start max 540 keeps the hybrid window (t_go = t_start+360, +100) inside
+    # t_total as well. See corticothalamic/task_design.py.
+    "t_start": jr.randint(jr.PRNGKey(SEED_CONFIG["task_seed"]), shape=(100,), minval=50, maxval=540),
     "t_cue": 10,
     "t_wait": 300,
-    "t_movement": 300,
+    "t_movement": 100,
     "t_total": 1000,
     "dt_ms": 10,
     # Brief-transient supervised target: a 10-step pulse at movement onset.
