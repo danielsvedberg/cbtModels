@@ -238,3 +238,49 @@ shape-incompatible and need retraining.
 | `corticothalamic/desaturate_sweep.py` | What pins cortex high, and what scale de-saturates it? |
 | `corticothalamic/eval_hybrid.py` | Did the trained net use the cue, or learn a cue-blind constant? |
 | `corticothalamic/stability_analysis.py` | `nln`-aware fixed-point + Jacobian analysis (supersedes the old linear probe) |
+
+---
+
+## 8. Self-timed stage: NOT solved (reward is misleading here)
+
+Run: `train_from_hybrid.py --bundle params_hybrid_logreward.pkl --iters 10000`
+(starting from the solved 0.88 hybrid bundle, `objective_mode=log_reward`).
+
+Final **reward 0.7882** — but this does **not** demonstrate self-timing.
+
+**The reward metric is degenerate on this task.** Per-trial windows overlap
+heavily (`t_start` in [52,399] → windows [362,709]…[662,1009]), so a single
+**fixed** response time that ignores the cue entirely already lands in-window on
+**87%** of trials (best fixed t = 703). Any reward ≤ 0.87 is achievable with zero
+timing ability.
+
+Decisive test (`corticothalamic/eval_selftimed.py`): regress response time on
+`t_start`.
+
+| measure | measured | self-timing requires |
+|---|---|---|
+| slope | **0.256** | ≈ 1.0 |
+| r | 0.262 | high |
+| latency mean (sd) | 583.7 (122.8) | ≈310, small sd |
+| sd(latency) vs sd(response_time) | **122.8 > 99.9** | latency sd ≪ response sd |
+| trials with output > 0.5 | **0 / 100** | most |
+
+The response sits at a roughly fixed time (~823) irrespective of the cue, the
+latency is *more* variable than the absolute response time (the fixed-time
+signature), and **the output never crosses threshold at all** — the reward accrues
+from diffuse sub-threshold probability spread across the 300-step window.
+
+**Why**: the window opens ~310 steps after the cue while the loop's `tau_eff` is
+~23–36 steps, so there is no substrate to carry the cue across the delay. Gradient
+descent took the only route available. It also inherited a hybrid solution that
+ignores the preparatory cue, so that pathway started from nothing while the go cue
+it had relied on was removed.
+
+**Lesson for future runs: never accept reward on this task as evidence of timing.**
+Always run `eval_selftimed.py`; require slope ≈ 1 and sd(latency) ≪ sd(response_time).
+
+Candidate directions (untested): exploit the slow PKA trace (`tau_pka_fall = 1440`)
+as an interval timer; a learned/structured attractor rather than a larger `rho`
+(which re-saturates past ~1.0); a finer curriculum that retires the go cue
+gradually; or randomizing `t_start` over a wider range to destroy the fixed-time
+shortcut.
