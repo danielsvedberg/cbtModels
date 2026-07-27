@@ -57,7 +57,13 @@ OPTIM_CONFIG = {
 RL_CONFIG = {
     "entropy_coef": 0.01,
     "baseline_momentum": 0.99,
-    "objective_mode": "loss",   # supervised BCE against the (brief-transient) target
+    # Optimize log P(first response lands in the reward window) directly.
+    # NOT "loss" (dense BCE): BCE scores timesteps independently and is nearly blind
+    # to what actually sets the reward. Cutting pre-window firing 0.0163 -> 0.001
+    # improves mean BCE by only ~0.011 (noise on a ~0.5 loss) but improves the
+    # hazard reward ~39,000x, because pre-window firing compounds over ~684 steps.
+    # Measured: hybrid-from-scratch reward 6e-4 under BCE vs 0.88 under log_reward.
+    "objective_mode": "log_reward",
     "brevity_coef": 0.5,
     "silence_coef": 0.5,
     "tail_coef": 0.5,

@@ -99,11 +99,17 @@ def _make_dual_cue_weights(params, rng_key):
     return p
 
 
-def main():
+def main(bundle_name=None, num_iters=None, objective=None):
     train_cfg = cfg.TRAINING_CONFIG
-    rl_cfg = cfg.RL_CONFIG
+    rl_cfg = dict(cfg.RL_CONFIG)
+    if objective is not None:
+        rl_cfg["objective_mode"] = objective
+        print(f"[override] objective_mode = {objective} "
+              f"(central: {cfg.RL_CONFIG['objective_mode']})")
+    n_iters = train_cfg["num_iters"] if num_iters is None else int(num_iters)
 
-    src_path = cfg.hybrid_params_path()
+    src_path = (cfg.hybrid_params_path() if bundle_name is None
+                else cfg.hybrid_params_path().parent / bundle_name)
     print(f"Loading hybrid parameters from {src_path}...")
     try:
         with src_path.open("rb") as f:
@@ -144,7 +150,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            train_cfg["num_iters"],
+            n_iters,
             batch_targets=targets,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
@@ -172,7 +178,7 @@ def main():
             inputs,
             masks,
             optimizer,
-            train_cfg["num_iters"],
+            n_iters,
             log_interval=train_cfg["log_interval"],
             seed=train_cfg["seed"],
             baseline_momentum=rl_cfg["baseline_momentum"],
@@ -211,4 +217,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Self-timed stage: start from a hybrid bundle.")
+    ap.add_argument("--bundle", default=None,
+                    help="hybrid .pkl filename to start from (default: params_hybrid.pkl)")
+    ap.add_argument("--iters", type=int, default=None,
+                    help="override TRAINING_CONFIG['num_iters']")
+    ap.add_argument("--objective", choices=("loss", "log_reward", "reward_prob"), default=None,
+                    help="override RL_CONFIG['objective_mode']")
+    a = ap.parse_args()
+    main(bundle_name=a.bundle, num_iters=a.iters, objective=a.objective)
