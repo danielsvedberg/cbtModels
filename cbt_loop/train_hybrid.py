@@ -106,9 +106,19 @@ def _init_from_scratch(seed):
     return params, config
 
 
-def main(init="pavlovian", num_iters=None):
+def main(init="pavlovian", num_iters=None, silence_coef=None, objective=None):
     train_cfg = cfg.TRAINING_CONFIG
-    rl_cfg = cfg.RL_CONFIG
+    rl_cfg = dict(cfg.RL_CONFIG)
+    if silence_coef is not None:
+        # Explicit experiment override of the central value; printed so a run's
+        # effective coefficient is never ambiguous.
+        rl_cfg["silence_coef"] = float(silence_coef)
+        print(f"[override] silence_coef = {rl_cfg['silence_coef']} "
+              f"(central: {cfg.RL_CONFIG['silence_coef']})")
+    if objective is not None:
+        rl_cfg["objective_mode"] = objective
+        print(f"[override] objective_mode = {objective} "
+              f"(central: {cfg.RL_CONFIG['objective_mode']})")
 
     if init == "pavlovian":
         params, config = _init_from_pavlovian()
@@ -213,5 +223,11 @@ if __name__ == "__main__":
                          "scratch: start from a fresh init_params, no bootstrap.")
     ap.add_argument("--iters", type=int, default=None,
                     help="override TRAINING_CONFIG['num_iters'] for this run")
+    ap.add_argument("--silence-coef", type=float, default=None,
+                    help="override RL_CONFIG['silence_coef'] (pre-window firing penalty)")
+    ap.add_argument("--objective", choices=("loss", "log_reward", "reward_prob"), default=None,
+                    help="override RL_CONFIG['objective_mode']. 'loss' = dense BCE; "
+                         "'log_reward' = optimize log P(first response in window) directly")
     a = ap.parse_args()
-    main(init=a.init, num_iters=a.iters)
+    main(init=a.init, num_iters=a.iters, silence_coef=a.silence_coef,
+         objective=a.objective)
