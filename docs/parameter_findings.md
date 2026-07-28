@@ -284,3 +284,49 @@ as an interval timer; a learned/structured attractor rather than a larger `rho`
 (which re-saturates past ~1.0); a finer curriculum that retires the go cue
 gradually; or randomizing `t_start` over a wider range to destroy the fixed-time
 shortcut.
+
+---
+
+## 9. Redesigned task: the metric now works, and the failure is unambiguous
+
+The window/`t_start` redesign (§8) drops the cue-ignoring ceiling from **0.87 → 0.27**
+(`corticothalamic/task_design.py`). Curriculum retrained end-to-end on it:
+
+| stage | reward | interpretation |
+|---|---|---|
+| hybrid from scratch (go cue present) | **0.9045** | **solved**, and more cleanly than on the easy task — `norm_resp_time` **0.001**, i.e. responses land right at the window's start |
+| self-timed (go cue removed) | **0.1005** | **fails** — now *below* the 0.27 degenerate ceiling, so the reward itself reports the failure |
+
+Timing test on the self-timed result:
+
+| measure | value | needed |
+|---|---|---|
+| slope (`response_time` vs `t_start`) | **0.060** | ≈1.0 |
+| r | 0.034 | high |
+| latency mean (sd) | 276 (282) | ≈310, small sd |
+| in-window | 10.0% | > 27% to beat the shortcut |
+| trials with output > 0.5 | 0/100 | most |
+
+**This is the clean negative result the old task could not produce.** Before, failure
+was hidden behind reward 0.79; now the same failure reads 0.10 against a 0.27
+chance-like ceiling. The redesign fixed the *measurement*, and the measurement says
+the model has no self-timing whatsoever (slope 0.06 — essentially cue-independent).
+
+### What this isolates
+
+The go cue is doing **all** the timing work. With it (hybrid) → 0.90 and responses
+precisely at window onset. Without it (self-timed) → nothing. The model has no
+mechanism to bridge the ~310-step delay: loop `tau_eff` is ~23–36 steps even after
+spectral normalization, ~10× short. This is now the single binding constraint, and
+it is a **representational** limit, not an optimization or metric one — both of
+those have been fixed and the failure persists unchanged.
+
+### Where to go next (in rough order of promise)
+
+1. **Slow variable as interval timer.** `tau_pka_fall = 1440` already provides a
+   ~1440-step decay in the PKA trace — the only variable in the model with the right
+   timescale. Nothing currently forces the network to read it as a clock.
+2. **Structured/learned attractor** (line attractor or ramp) in the loop. Note a
+   larger `rho` is *not* the answer: >1.0 re-saturates (§4) and cuts memory.
+3. **Graded curriculum** that retires the go cue progressively (jitter it, weaken it,
+   then drop it) rather than removing it in one step.

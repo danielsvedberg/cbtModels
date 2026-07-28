@@ -79,8 +79,14 @@ def main():
     print(f"latency (response - t_start): mean {lat.mean():.1f}, sd {lat.std():.1f} "
           f"(target ~{t['t_cue'] + t['t_wait']})")
     print(f"response_time itself:          mean {y.mean():.1f}, sd {y.std():.1f}")
+    # Degenerate ceiling, computed from the CURRENT task config (not hardcoded):
+    # the best single fixed response time that ignores the cue entirely.
+    w_lo = ts + t["t_cue"] + t["t_wait"]
+    w_hi = w_lo + t["t_movement"]
+    ceiling = max(float(np.mean((T >= w_lo) & (T < w_hi)))
+                  for T in range(int(t["t_total"])))
     print(f"in-window fraction: {in_win.mean():.1%}   "
-          f"(fixed-latency baseline achieves ~87%)")
+          f"(cue-ignoring fixed-time ceiling for this task: {ceiling:.1%})")
 
     print("\nVERDICT:")
     if slope > 0.7 and r > 0.7:
