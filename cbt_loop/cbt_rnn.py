@@ -229,6 +229,10 @@ def init_params(rng_key, n_input):
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
         "k_a": jnp.array(_wi["k_a"]),
+        # Soft-threshold level on the PKA integrator (trainable): where the
+        # striatal gate opens, hence the learned interval.
+        "pka_thresh_d1": jnp.ones((n_d1,)) * _wi["pka_thresh"],
+        "pka_thresh_d2": jnp.ones((n_d2,)) * _wi["pka_thresh"],
         "m_a1": jnp.ones((n_d1,)) * _wi["m_a1"],  # A1R inhibitory drive on D1 PKA
         "m_a2": jnp.ones((n_d2,)) * _wi["m_a2"],  # A2R excitatory drive on D2 PKA
     }
@@ -440,6 +444,13 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # small, so the raw DA term barely registers against tonic adenosine; a gain
     # >1 lets phasic DA actually drive D1 PKA (and inhibit D2 PKA) within range.
     da_pka_gain = config["da_pka_gain"]
+    pka_integrator = config["pka_integrator"]
+    pka_gate_min = config["pka_gate_min"]
+    pka_gate_max = config["pka_gate_max"]
+    pka_gate_slope = config["pka_gate_slope"]
+    # Trainable soft-threshold on the PKA integrator = the learnable interval.
+    pka_thresh_d1 = jnp.asarray(params["pka_thresh_d1"])
+    pka_thresh_d2 = jnp.asarray(params["pka_thresh_d2"])
 
     # Tonic adenosine level: a single tunable scalar shared by both SPN
     # populations. Kept explicit so it can later be promoted to a dynamic
@@ -550,19 +561,43 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # by its own per-neuron gain m_d1[i] / m_d2[i].
         mean_snc = jnp.mean(x_snc)
 
-        # PKA dynamics (leaky saturating integrator):
-        # exponential leak with tau_pka_fall, rectified DA-driven production
-        # (receptor activation can't make negative cAMP), tanh-saturating output.
-        # Asymmetric timescales emerge from the gain ratio tau_fall/tau_rise.
+        # PKA dynamics — a genuine LEAKY INTEGRATOR, the model's only variable with
+        # a delay-scale time constant (tau_pka_fall), so it is the natural substrate
+        # for an interval timer.
+        #
+        # pka_integrator=True keeps the STATE unsquashed and squashes only where the
+        # state is USED (the bg_nln gate). The previous code applied nln() to the
+        # state itself every step, which destroys the slow leak: the per-step decay
+        # becomes (1-1/tau_fall)*nln'(.) instead of (1-1/tau_fall), and the measured
+        # half-life collapsed to ~3 steps despite tau_pka_fall=1440 (~998 expected).
+        # See corticothalamic/pka_timer_probe.py.
+        #
+        # The rectification max(.,0) is biological (receptor activation cannot make
+        # negative cAMP), but if the tonic adenosine term exceeds the DA term the
+        # production clamps to 0 AND its derivative w.r.t. mean_snc is 0 — the clock
+        # then has neither drive nor gradient. Keep da_pka_gain high enough that the
+        # DA term wins at the operating point (config: da_pka_gain).
         #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
-        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1
-        pka_d1 = pka_d1 + (1.0 / tau_pka_rise) * jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
-        pka_d1 = nln(pka_d1)
+        prod_d1 = jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
+        prod_d2 = jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
+        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
+        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
+        if not pka_integrator:
+            # legacy: squash the carried state (kills the slow timescale)
+            pka_d1 = nln(pka_d1)
+            pka_d2 = nln(pka_d2)
 
-        #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
-        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2
-        pka_d2 = pka_d2 + (1.0 / tau_pka_rise) * jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
-        pka_d2 = nln(pka_d2)
+        # Map the raw integrator into bg_nln's valid (0,1) excitability range with a
+        # SOFT THRESHOLD rather than a clip. This is what turns the integrator into a
+        # usable interval timer: the gate opens as the integrator crosses a level, and
+        # that level (pka_thresh_*) is a TRAINABLE parameter, so the network can learn
+        # *when* to open — i.e. learn the interval. A hard clip cannot do this: the raw
+        # state reaches ~12 while the gate range is (0,1), so clipping pins the gate at
+        # its ceiling and the timing signal never reaches the striatum.
+        pka_gate_d1 = pka_gate_min + (pka_gate_max - pka_gate_min) * sigmoid(
+            pka_gate_slope * (pka_d1 - pka_thresh_d1))
+        pka_gate_d2 = pka_gate_min + (pka_gate_max - pka_gate_min) * sigmoid(
+            pka_gate_slope * (pka_d2 - pka_thresh_d2))
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
@@ -570,14 +605,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_d1 = x_d1 + (1.0 / tau_d1) * b_cU_d1 @ x_c_U
         x_d1 = x_d1 + (1.0 / tau_d1) * b_d2_d1 @ x_d2
         x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
-        x_d1 = bg_nln(x_d1, pka_d1)
+        x_d1 = bg_nln(x_d1, pka_gate_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
         x_d2 = x_d2 + (1.0 / tau_d2) * j_d2 @ x_d2
         x_d2 = x_d2 + (1.0 / tau_d2) * b_cU_d2 @ x_c_U
         x_d2 = x_d2 + (1.0 / tau_d2) * b_d1_d2 @ x_d1
         x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
-        x_d2 = bg_nln(x_d2, pka_d2)
+        x_d2 = bg_nln(x_d2, pka_gate_d2)
 
         x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
         x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer

@@ -202,7 +202,23 @@ CBT_RUNTIME_CONFIG = {
     "snr_med_floor": 0.1,
     "m_floor_a1": 0.001,
     "m_floor_a2": 0.001,
-    "da_pka_gain": 1.0,
+    # DA->PKA drive gain. Must be large enough that the DA term beats the tonic
+    # adenosine term at the operating point, else max(DA - adenosine, 0) clamps to
+    # zero and PKA has neither drive NOR gradient w.r.t. SNc (measured: DA 0.0225
+    # vs adenosine 0.0593 at gain 1.0 -> production exactly 0, PKA cue response
+    # exactly 0.00000). See corticothalamic/pka_timer_probe.py.
+    "da_pka_gain": 4.0,
+    # PKA as a genuine leaky integrator: keep the STATE unsquashed (tau_pka_fall
+    # then really sets the timescale) and squash only where it is USED, by clipping
+    # into bg_nln's valid (0,1) excitability range. With the legacy behaviour
+    # (nln applied to the state every step) the measured half-life was ~3 steps despite
+    # tau_pka_fall=1440. This is the model's only delay-scale variable, hence the
+    # natural substrate for an interval timer.
+    "pka_integrator": True,
+    "pka_gate_min": 0.05,
+    "pka_gate_max": 0.95,
+    # Slope of the soft threshold; small because the raw integrator spans ~0-12.
+    "pka_gate_slope": 1.0,
     "k_a_floor": 0.001,
     "k_a_cap": 1.0,
     "snc_pacer_min": 0.05,
@@ -246,6 +262,10 @@ CBT_WEIGHT_INIT = {
     "out_gain": 4.0,       # readout gain
     "out_bias": -1.0986123,  # readout bias = logit(0.25)
     "k_a": 1.0,            # tonic adenosine level (pre-sigmoid/exc)
+    # Initial PKA soft-threshold. The integrator ramps ~0.3->12 over a trial,
+    # so a mid-range init puts the gate crossing inside the trial where there
+    # is gradient to move it toward the correct interval.
+    "pka_thresh": 4.0,
 }
 
 
