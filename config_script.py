@@ -215,9 +215,24 @@ CBT_RUNTIME_CONFIG = {
     # tau_pka_fall=1440. This is the model's only delay-scale variable, hence the
     # natural substrate for an interval timer.
     "pka_integrator": True,
+    # PKA state saturation rule (read only by cbt_loop/cbt_rnn.py):
+    #   "linear"      - unbounded leaky integrator (canonical/default); only the
+    #                   readout gate saturates the signal, the state can ramp freely.
+    #   "mass_action" - bounded pool: production throttled by (1 - pka/pka_max) so
+    #                   the STATE saturates at ~pka_max while the leak stays linear
+    #                   (slow timescale preserved through the delay). See cbt_loop
+    #                   override below. pka_max is unused when saturation == "linear".
+    "pka_saturation": "linear",
+    "pka_max": 4.0,
+    # Numerical safety inset when PKA is fed DIRECTLY as bg_nln's excitability b
+    # (cbt_loop): b = clip(pka, eps, 1-eps) keeps c=3/(1-b) and d=(1/6)(1-b)/b
+    # finite at the (0,1) endpoints. Only bites at the extremes; rest sits at ~0.5.
+    "pka_clip_eps": 0.02,
     "pka_gate_min": 0.05,
     "pka_gate_max": 0.95,
-    # Slope of the soft threshold; small because the raw integrator spans ~0-12.
+    # Slope of the soft threshold; small because the linear integrator spans ~0-15.
+    # (cbt_loop's mass_action path overrides this steeper — the bounded state spans
+    # only ~0-pka_max, so a wider slope is needed for a comparable gate transition.)
     "pka_gate_slope": 1.0,
     "k_a_floor": 0.001,
     "k_a_cap": 1.0,
@@ -272,7 +287,20 @@ CBT_WEIGHT_INIT = {
 # Architecture-unique keys per CBT family (nuclei dropped; extra runtime keys;
 # extra initial-state keys).
 _CBT_FAMILY_STRUCTURE = {
-    "cbt_loop": {"drop_rnn": (), "extra_runtime": {}, "extra_init": {}},
+    "cbt_loop": {
+        "drop_rnn": (),
+        # PKA redesign (cbt_loop only): PKA is a mass-action-bounded pool in (0,1)
+        # fed DIRECTLY as bg_nln's excitability b — NO separate soft-threshold gate.
+        # pka_max=1 keeps it a valid b; both D1 and D2 PKA rest ~0.5 (so bg_nln≈nln
+        # at rest) via the rebalanced tonic adenosine drive m_a1/m_a2. Dopamine
+        # raises D1 PKA and brakes D2 PKA; adenosine does the inverse. noSC /
+        # noSCnoSTN keep the canonical linear-integrator + soft-threshold-gate path.
+        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0},
+        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5},
+        # Tonic adenosine drives tuned so both D1 and D2 PKA rest at ~0.5 (empirical
+        # sweep; resting D1=D2=0.507): A1R constrains D1, A2R drives D2.
+        "extra_weight_init": {"m_a1": 0.30, "m_a2": 0.07},
+    },
     "cbt_loop_noSC": {
         "drop_rnn": ("n_sc",),
         # noSC models DA/adenosine as dynamic concentrations (only it reads these).
@@ -375,9 +403,12 @@ def init_state_for(family):
 
 def weight_init_for(family):
     """Scalar init values of non-fan-in-scaled trainable weights (m_a1/m_a2,
-    out_gain/out_bias, k_a). Shared across the CBT trio; each reads the subset
-    it uses."""
-    return dict(CBT_WEIGHT_INIT)
+    out_gain/out_bias, k_a). Canonical is shared across the CBT trio; a family may
+    override specific values via its structure's optional "extra_weight_init"."""
+    d = dict(CBT_WEIGHT_INIT)
+    if family in CBT_FAMILIES:
+        d.update(_CBT_FAMILY_STRUCTURE[family].get("extra_weight_init", {}))
+    return d
 
 
 def _make_optimizer():

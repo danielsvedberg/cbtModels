@@ -229,10 +229,6 @@ def init_params(rng_key, n_input):
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
         "k_a": jnp.array(_wi["k_a"]),
-        # Soft-threshold level on the PKA integrator (trainable): where the
-        # striatal gate opens, hence the learned interval.
-        "pka_thresh_d1": jnp.ones((n_d1,)) * _wi["pka_thresh"],
-        "pka_thresh_d2": jnp.ones((n_d2,)) * _wi["pka_thresh"],
         "m_a1": jnp.ones((n_d1,)) * _wi["m_a1"],  # A1R inhibitory drive on D1 PKA
         "m_a2": jnp.ones((n_d2,)) * _wi["m_a2"],  # A2R excitatory drive on D2 PKA
     }
@@ -445,12 +441,21 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # >1 lets phasic DA actually drive D1 PKA (and inhibit D2 PKA) within range.
     da_pka_gain = config["da_pka_gain"]
     pka_integrator = config["pka_integrator"]
-    pka_gate_min = config["pka_gate_min"]
-    pka_gate_max = config["pka_gate_max"]
-    pka_gate_slope = config["pka_gate_slope"]
-    # Trainable soft-threshold on the PKA integrator = the learnable interval.
-    pka_thresh_d1 = jnp.asarray(params["pka_thresh_d1"])
-    pka_thresh_d2 = jnp.asarray(params["pka_thresh_d2"])
+    # PKA state saturation rule: "linear" = unbounded leaky integrator (the state
+    # can ramp without bound; only the readout gate saturates it); "mass_action" =
+    # bounded pool, production throttled by an available-substrate factor
+    # (1 - pka/pka_max) so the state saturates at ~pka_max while the LEAK stays
+    # linear (slow τ_pka_fall preserved during the delay). The mass-action form is
+    # the biophysically faithful way to bound PKA WITHOUT destroying the slow
+    # timescale — squashing the carried state with a static nln (legacy path) does
+    # destroy it, because the effective per-step retention becomes
+    # (1-1/τ_fall)·nln'(pka), which collapses as pka saturates.
+    pka_saturation = config["pka_saturation"]
+    pka_max = config["pka_max"]
+    # PKA is fed DIRECTLY as bg_nln's excitability b (no separate soft-threshold
+    # gate); pka_clip_eps only insets it off the (0,1) endpoints for numerical
+    # safety. With pka_max=1 and resting pka~0.5, the clip almost never bites.
+    pka_clip_eps = config["pka_clip_eps"]
 
     # Tonic adenosine level: a single tunable scalar shared by both SPN
     # populations. Kept explicit so it can later be promoted to a dynamic
@@ -580,6 +585,13 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
         prod_d1 = jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
         prod_d2 = jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
+        if pka_saturation == "mass_action":
+            # Bounded pool: the available-substrate factor (1 - pka/pka_max)
+            # throttles production as the pool fills, so the STATE saturates at
+            # ~pka_max. The leak term stays linear, so during the delay (drive ~0)
+            # decay is the pure slow leak and the timescale is preserved.
+            prod_d1 = prod_d1 * jnp.maximum(1.0 - pka_d1 / pka_max, 0.0)
+            prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
         pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
         pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
         if not pka_integrator:
@@ -587,17 +599,13 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
             pka_d1 = nln(pka_d1)
             pka_d2 = nln(pka_d2)
 
-        # Map the raw integrator into bg_nln's valid (0,1) excitability range with a
-        # SOFT THRESHOLD rather than a clip. This is what turns the integrator into a
-        # usable interval timer: the gate opens as the integrator crosses a level, and
-        # that level (pka_thresh_*) is a TRAINABLE parameter, so the network can learn
-        # *when* to open — i.e. learn the interval. A hard clip cannot do this: the raw
-        # state reaches ~12 while the gate range is (0,1), so clipping pins the gate at
-        # its ceiling and the timing signal never reaches the striatum.
-        pka_gate_d1 = pka_gate_min + (pka_gate_max - pka_gate_min) * sigmoid(
-            pka_gate_slope * (pka_d1 - pka_thresh_d1))
-        pka_gate_d2 = pka_gate_min + (pka_gate_max - pka_gate_min) * sigmoid(
-            pka_gate_slope * (pka_d2 - pka_thresh_d2))
+        # PKA is bounded to (0,1) by the mass-action pool above, so it IS the
+        # excitability argument b for bg_nln directly (no separate soft-threshold
+        # gate). Rest ~0.5 makes bg_nln ≈ nln; dopamine drives pka_d1 up (D1 more
+        # excitable) and pka_d2 down (D2 brake), adenosine the inverse. The clip
+        # only insets off the (0,1) endpoints where bg_nln's c/d would diverge.
+        pka_gate_d1 = jnp.clip(pka_d1, pka_clip_eps, 1.0 - pka_clip_eps)
+        pka_gate_d2 = jnp.clip(pka_d2, pka_clip_eps, 1.0 - pka_clip_eps)
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
