@@ -186,17 +186,17 @@ CBT_RNN_CONFIG = {
 # init_params runtime dict (biophysical constants). Built into `config` by
 # init_params in each cbt_rnn.py so there is one place to edit them.
 CBT_RUNTIME_CONFIG = {
-    "tau_c": 5.0,
-    "tau_med": 5.0,
-    "tau_d1": 5.0,
-    "tau_d2": 5.0,
-    "tau_t": 5.0,
-    "tau_snr": 5.0,
-    "tau_gpe": 5.0,
-    "tau_stn": 5.0,
-    "tau_sc": 5.0,
+    "tau_c": 10.0,
+    "tau_med": 10.0,
+    "tau_d1": 10.0,
+    "tau_d2": 10.0,
+    "tau_t": 10.0,
+    "tau_snr": 10.0,
+    "tau_gpe": 10.0,
+    "tau_stn": 10.0,
+    "tau_sc": 10.0,
     "tau_snc": 10.0,
-    "tau_pka_fall": 1440.0,
+    "tau_pka_fall": 500.0,
     "tau_pka_rise": 10.0,
     "m_floor": 0.001,
     "snr_med_floor": 0.1,
@@ -296,7 +296,11 @@ _CBT_FAMILY_STRUCTURE = {
         # raises D1 PKA and brakes D2 PKA; adenosine does the inverse. noSC /
         # noSCnoSTN keep the canonical linear-integrator + soft-threshold-gate path.
         "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0},
-        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5},
+        # Start PKA LOW so it ramps up over the trial (a rising clock), rather than
+        # resting at its ~0.5 equilibrium from t=0. Mirrors promising_version
+        # (pka_d10=0.1). The tonic-adenosine tuning (m_a1/m_a2) still sets the
+        # equilibrium near 0.5, so PKA ramps 0.1 -> ~0.5 across the delay.
+        "extra_init": {"pka_d10": 0.1, "pka_d20": 0.1},
         # Tonic adenosine drives tuned so both D1 and D2 PKA rest at ~0.5 (empirical
         # sweep; resting D1=D2=0.507): A1R constrains D1, A2R drives D2.
         "extra_weight_init": {"m_a1": 0.30, "m_a2": 0.07},
