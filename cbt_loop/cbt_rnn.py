@@ -294,8 +294,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_t0_exc = jnp.asarray(params["x_t0_exc"])
     x_t0_inh = jnp.asarray(params["x_t0_inh"])
     x_med0   = jnp.asarray(params["x_med0"])
-    pka_d10  = jnp.asarray(params["pka_d10"])
-    pka_d20  = jnp.asarray(params["pka_d20"])
+    # Clamp the (trainable) PKA initial states to a sane range so training can't
+    # push them to extreme bg_nln shifts (e.g. 0.1 -> D1 barely fires, 0.68 -> near
+    # saturation). Both D1/D2 PKA start within [pka_init_floor, pka_init_cap].
+    _pka_lo = config["pka_init_floor"]; _pka_hi = config["pka_init_cap"]
+    pka_d10  = jnp.clip(jnp.asarray(params["pka_d10"]), _pka_lo, _pka_hi)
+    pka_d20  = jnp.clip(jnp.asarray(params["pka_d20"]), _pka_lo, _pka_hi)
 
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
@@ -391,7 +395,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     m_floor_a2 = config["m_floor_a2"]
     m_d1 = ciel_floor(exc(params["m_d1"]),1, m_floor)
     m_d2 = ciel_floor(exc(params["m_d2"]),1, m_floor)
-    m_a1 = ciel_floor(exc(params["m_a1"]), 1, m_floor_a1)
+    # Cap the A1R gain (config m_a1_cap) so training can't grow adenosine inhibition
+    # on D1 PKA past the DA drive and collapse dSPN excitability (see SELF_TIMING).
+    m_a1 = jnp.clip(ciel_floor(exc(params["m_a1"]), 1, m_floor_a1), m_floor_a1, config["m_a1_cap"])
     m_a2 = ciel_floor(exc(params["m_a2"]), 1, m_floor_a2)
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))

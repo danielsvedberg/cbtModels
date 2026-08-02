@@ -47,7 +47,7 @@ CBT_FAMILIES = ("cbt_loop", "cbt_loop_noSC", "cbt_loop_noSCnoSTN")
 # =========================================================================== #
 SEED_CONFIG = {
     "task_seed": 13,
-    "train_seed": 0,
+    "train_seed": 3,
 }
 
 OPTIM_CONFIG = {
@@ -295,15 +295,17 @@ _CBT_FAMILY_STRUCTURE = {
         # at rest) via the rebalanced tonic adenosine drive m_a1/m_a2. Dopamine
         # raises D1 PKA and brakes D2 PKA; adenosine does the inverse. noSC /
         # noSCnoSTN keep the canonical linear-integrator + soft-threshold-gate path.
-        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0},
+        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
+                          "pka_init_floor": 0.4, "pka_init_cap": 0.6},
         # Start PKA LOW so it ramps up over the trial (a rising clock), rather than
         # resting at its ~0.5 equilibrium from t=0. Mirrors promising_version
         # (pka_d10=0.1). The tonic-adenosine tuning (m_a1/m_a2) still sets the
         # equilibrium near 0.5, so PKA ramps 0.1 -> ~0.5 across the delay.
-        "extra_init": {"pka_d10": 0.1, "pka_d20": 0.1},
-        # Tonic adenosine drives tuned so both D1 and D2 PKA rest at ~0.5 (empirical
-        # sweep; resting D1=D2=0.507): A1R constrains D1, A2R drives D2.
-        "extra_weight_init": {"m_a1": 0.30, "m_a2": 0.07},
+        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5},  # clamped to [0.4,0.6] at use
+        # Adenosine drives BALANCED (m_a1 ~= m_a2) so A1R inhibition on D1 doesn't
+        # swamp its (small) DA drive; m_a1 also CAPPED (extra_runtime m_a1_cap) so
+        # training can't regrow A1R and collapse dSPN excitability. Keeps D1 alive.
+        "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
     },
     "cbt_loop_noSC": {
         "drop_rnn": ("n_sc",),

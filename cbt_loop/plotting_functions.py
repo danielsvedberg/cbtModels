@@ -14,8 +14,9 @@ import numpy as np
 #import filter for gaussian smoothing
 from scipy.ndimage import gaussian_filter1d
 from scipy import stats
-import cbt_loop.cbt_rnn as cl
-import cbt_loop.config_script as cs
+import cbt_rnn as cl
+import config_script as _config_script
+cs = _config_script.for_family('cbt_loop')  # family view exposes default_config/RNN_CONFIG/etc.
 import jax.numpy as jnp
 import jax.random as jr
 import self_timed_movement_task as stmt
