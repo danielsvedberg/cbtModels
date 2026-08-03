@@ -317,7 +317,16 @@ _CBT_FAMILY_STRUCTURE = {
         },
         "extra_init": {"x_da0": 0.1, "x_ado0": 0.1},
     },
-    "cbt_loop_noSCnoSTN": {"drop_rnn": ("n_sc", "n_stn"), "extra_runtime": {}, "extra_init": {}},
+    "cbt_loop_noSCnoSTN": {
+        "drop_rnn": ("n_sc", "n_stn"),
+        # PKA redesign PORTED from cbt_loop: mass-action-bounded PKA fed directly to
+        # bg_nln (no soft-threshold gate / no per-step state squash), capped A1R,
+        # clamped PKA inits, balanced adenosine. Same values as cbt_loop.
+        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
+                          "pka_init_floor": 0.4, "pka_init_cap": 0.6},
+        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5},
+        "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
+    },
 }
 
 # --- corticothalamic (2-node ctx/thalamus RNN; architecture-specific) ---

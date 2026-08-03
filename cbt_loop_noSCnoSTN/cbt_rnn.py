@@ -173,6 +173,11 @@ def init_params(rng_key, n_input):
         "B_snr_med": (1 / (n_snr)) * jr.normal(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E units (inh)
         "C_med": (1 / (n_med // 2)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
         #"rb": jnp.abs((1 / (n_med)) * jr.normal(skeys[16], (n_output,))),
+        # Output readout gain/bias: y = sigmoid(out_gain*(c_med@x_med_E) + out_bias).
+        # out_bias = logit(0.25) gives a nonzero resting response prob so the policy
+        # can explore from the start; both trainable. (Ported from cbt_loop.)
+        "out_gain": jnp.array(_wi["out_gain"]),
+        "out_bias": jnp.array(_wi["out_bias"]),
         # Trainable initial states (resting/baseline activity per area); the
         # starting values are declared centrally (config_script.CBT_INIT_STATE).
         "x_c0_U": jnp.ones((n_c_U,)) * _is["x_c0_U"],
@@ -239,8 +244,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_t0_exc = jnp.asarray(params["x_t0_exc"])
     x_t0_inh = jnp.asarray(params["x_t0_inh"])
     x_med0   = jnp.asarray(params["x_med0"])
-    pka_d10  = jnp.asarray(params["pka_d10"])
-    pka_d20  = jnp.asarray(params["pka_d20"])
+    # Clamp the (trainable) PKA initial states to a sane range so training can't
+    # push them to extreme bg_nln shifts. (Ported from cbt_loop.)
+    _pka_lo = config["pka_init_floor"]; _pka_hi = config["pka_init_cap"]
+    pka_d10  = jnp.clip(jnp.asarray(params["pka_d10"]), _pka_lo, _pka_hi)
+    pka_d20  = jnp.clip(jnp.asarray(params["pka_d20"]), _pka_lo, _pka_hi)
 
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
@@ -322,7 +330,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     #m_floor_a2 = config["m_floor_a2"]
     m_d1 = exc(params["m_d1"])# + m_floor
     m_d2 = exc(params["m_d2"]) #+ m_floor
-    m_a1 = exc(params["m_a1"]) #+ m_floor_a1
+    # Cap the A1R gain so training can't grow adenosine inhibition on D1 PKA past
+    # the DA drive and collapse dSPN excitability. (Ported from cbt_loop.)
+    m_a1 = jnp.clip(exc(params["m_a1"]), 0.0, config["m_a1_cap"])
     m_a2 = exc(params["m_a2"]) #+ m_floor_a2
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
@@ -350,6 +360,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     #snr_med_floor = config["snr_med_floor"]
     b_snr_med = -inh(params["B_snr_med"])# + snr_med_floor)  # shape (n_med//2, n_snr)
     c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
+    out_gain = jnp.asarray(params["out_gain"])
+    out_bias = jnp.asarray(params["out_bias"])
     # Readout gain/bias (fall back to constants for legacy bundles without them).
     #rb = params["rb"]
 
@@ -367,7 +379,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # small, so the raw DA term barely registers against tonic adenosine; a gain
     # >1 lets phasic DA actually drive D1 PKA (and inhibit D2 PKA) within range.
     da_pka_gain = config["da_pka_gain"]
-    
+    # PKA saturation rule (ported from cbt_loop): mass-action-bounded pool fed
+    # directly into bg_nln as excitability b (no per-step state squash).
+    pka_saturation = config["pka_saturation"]
+    pka_max = config["pka_max"]
+    pka_clip_eps = config["pka_clip_eps"]
+
     # Tonic adenosine level: a single tunable scalar shared by both SPN
     # populations. Kept explicit so it can later be promoted to a dynamic
     # state (e.g. activity-dependent A1R/A2R modulation) without touching the
@@ -477,16 +494,22 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # (receptor activation can't make negative cAMP), tanh-saturating output.
         # Asymmetric timescales emerge from the gain ratio tau_fall/tau_rise.
         #   D1: D1R (DA) activates PKA; A1R (tonic adenosine) inhibits.
-        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1
-        pka_d1 = pka_d1 + (1.0 / tau_pka_rise) * jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
-        #pka_d1 = nln(pka_d1)
-        pka_d1 = sigmoid(4*(pka_d1-0.5))
+        # Mass-action-bounded leaky integrator (ported from cbt_loop): production
+        # rectified (biological), throttled by available-substrate (1-pka/pka_max)
+        # so the STATE stays in (0,1); the leak stays linear so tau_pka_fall really
+        # sets the timescale (no per-step sigmoid squash, which would destroy it).
+        prod_d1 = jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
+        prod_d2 = jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
+        if pka_saturation == "mass_action":
+            prod_d1 = prod_d1 * jnp.maximum(1.0 - pka_d1 / pka_max, 0.0)
+            prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
+        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
+        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
 
-        #   D2: A2R (tonic adenosine) activates PKA; D2R (DA) inhibits.
-        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2
-        pka_d2 = pka_d2 + (1.0 / tau_pka_rise) * jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
-        #pka_d2 = nln(pka_d2)
-        pka_d2 = sigmoid(4*(pka_d2-0.5))
+        # PKA is bounded to (0,1), so it IS bg_nln's excitability b directly (no
+        # soft-threshold gate). Clip only insets off the (0,1) endpoints.
+        pka_gate_d1 = jnp.clip(pka_d1, pka_clip_eps, 1.0 - pka_clip_eps)
+        pka_gate_d2 = jnp.clip(pka_d2, pka_clip_eps, 1.0 - pka_clip_eps)
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
@@ -494,14 +517,14 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_d1 = x_d1 + (1.0 / tau_d1) * (b_d2_d1 @ x_d2)
         x_d1 = x_d1 + (1.0 / tau_d1) * (b_cU_d1 @ x_c_U)
         x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
-        x_d1 = bg_nln(x_d1, pka_d1)
+        x_d1 = bg_nln(x_d1, pka_gate_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
         x_d2 = x_d2 + (1.0 / tau_d2) * (j_d2 @ x_d2)
         x_d2 = x_d2 + (1.0 / tau_d2) * (b_d1_d2 @ x_d1)
         x_d2 = x_d2 + (1.0 / tau_d2) * (b_cU_d2 @ x_c_U)
         x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
-        x_d2 = bg_nln(x_d2, pka_d2)
+        x_d2 = bg_nln(x_d2, pka_gate_d2)
 
         x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
         x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer
@@ -523,9 +546,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_med = x_med.at[:2].add((1.0 / tau_med) * (b_cL_med @ x_c_L))  # cL → medulla E units only
         x_med = nln(x_med)
 
-        #y_t = nln(c_med @ x_med[:2])  # floored readout (rests at 0 -> no RL exploration)
-        # Biased sigmoid readout: nonzero resting prob (~sigmoid(out_bias)) so the
-        y_t = nln((c_med @ x_med[:2]))  # readout from E units only
+        # Biased sigmoid readout (ported from cbt_loop): nonzero resting prob
+        # (~sigmoid(out_bias)) so the policy can explore; out_gain/out_bias trainable.
+        y_t = sigmoid(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
 
         # Pack the full cortex/thalamus state ([cU..., cL..., c_inh...]) into the
         # output so downstream analysis code (get_brain_area, slope, ratios) still
