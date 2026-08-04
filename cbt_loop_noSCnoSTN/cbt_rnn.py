@@ -25,6 +25,11 @@ def inh(w):
     return stmt.inh(w)
 
 
+def no_autapse(m):
+    """Zero the diagonal of a square within-population recurrence (no self-synapse)."""
+    return m * (1.0 - jnp.eye(m.shape[0], dtype=m.dtype))
+
+
 def nln(x):
     return stmt.nln(x)
 
@@ -220,6 +225,11 @@ def init_params(rng_key, n_input):
         # so the task gradient vanishes. See ../loop_init.py and
         # ../corticothalamic/{loop_criticality,loop_gradient,desaturate_sweep}.py.
         # balanced_target_rho is a CONFIG CONSTANT applied once here, never trained.
+        # This family no-autapses the loop self-recurrences at runtime; zero those
+        # diagonals FIRST so the normalized (no-autapse) rho hits target exactly.
+        for _k in ("J_cU", "J_cL", "J_c_ii", "J_t_ee", "J_t_ii"):
+            _m = jnp.asarray(params[_k])
+            params[_k] = _m * (1.0 - jnp.eye(_m.shape[0], dtype=_m.dtype))
         params, rho0, rho1 = _loop_init.normalize_loop(
             params, n_c_U, n_c_L, n_c_inh, n_t_exc, n_t_inh,
             tau=config["tau_c"], target_rho=balanced_target_rho,
@@ -269,24 +279,24 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
     # Cortex blocks. Sign follows presynaptic identity (Dale's law). cU/cL are
     # excitatory PT-like populations; c_inh is the shared inhibitory pool.
-    j_cU = exc(params["J_cU"])        # cU → cU
-    j_cL = exc(params["J_cL"])        # cL → cL
+    j_cU = no_autapse(exc(params["J_cU"]))        # cU → cU
+    j_cL = no_autapse(exc(params["J_cL"]))        # cL → cL
     b_cU_cL = exc(params["B_cU_cL"])  # cU → cL
     b_cL_cU = exc(params["B_cL_cU"])  # cL → cU
     j_cU_ci = exc(params["J_cU_ci"])  # cU → c_inh
     j_cL_ci = exc(params["J_cL_ci"])  # cL → c_inh
     j_ci_cU = inh(params["J_ci_cU"])  # c_inh → cU
     j_ci_cL = inh(params["J_ci_cL"])  # c_inh → cL
-    j_c_ii = inh(params["J_c_ii"])    # c_inh → c_inh
+    j_c_ii = no_autapse(inh(params["J_c_ii"]))    # c_inh → c_inh
     # Thalamus E/I recurrent blocks.
-    j_t_ee = exc(params["J_t_ee"])  # T_exc → T_exc
+    j_t_ee = no_autapse(exc(params["J_t_ee"]))  # T_exc → T_exc
     j_t_ei = inh(params["J_t_ei"])  # T_inh → T_exc
     j_t_ie = exc(params["J_t_ie"])  # T_exc → T_inh
-    j_t_ii = inh(params["J_t_ii"])  # T_inh → T_inh
+    j_t_ii = no_autapse(inh(params["J_t_ii"]))  # T_inh → T_inh
 
-    j_d1 = inh(params["J_d1"])
-    j_d2 = inh(params["J_d2"])
-    j_gpe = inh(params["J_gpe"])
+    j_d1 = no_autapse(inh(params["J_d1"]))
+    j_d2 = no_autapse(inh(params["J_d2"]))
+    j_gpe = no_autapse(inh(params["J_gpe"]))
 
     p_snr = exc(params["P_snr"])
     p_snc = exc(params["P_snc"])

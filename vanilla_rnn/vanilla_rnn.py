@@ -48,7 +48,9 @@ def init_params(rng_key, n_input):
 
 
 def vanilla_rnn(params, config, inputs, opto_stimulation=None, rng_key=None):
-    w_rec = params["w_rec"]
+    def _no_autapse(m):
+        return m * (1.0 - jnp.eye(m.shape[0], dtype=m.dtype))
+    w_rec = _no_autapse(params["w_rec"])
     w_in = params["w_in"]
     w_out = params["w_out"]
     b_h = params["b_h"]
