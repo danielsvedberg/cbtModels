@@ -310,12 +310,21 @@ _CBT_FAMILY_STRUCTURE = {
     "cbt_loop_noSC": {
         "drop_rnn": ("n_sc",),
         # noSC models DA/adenosine as dynamic concentrations (only it reads these).
+        # Both concentrations AND PKA use MASS-ACTION kinetics: production is
+        # throttled by available substrate (1 - C/C_max) so each pool saturates at
+        # its C_max instead of growing without bound. PKA is then fed directly into
+        # bg_nln as excitability b (no legacy per-step state squash). Plus the
+        # cbt_loop D1-preservation guards (mid-range PKA init, capped A1R gain,
+        # balanced m_a1/m_a2). da_max/ado_max bound the DA/adenosine pools.
         "extra_runtime": {
             "tau_da": 20.0, "tau_ado": 200.0,
             "da_release": 1.0, "ado_release": 1.0,
+            "da_max": 1.0, "ado_max": 1.0,
             "stn_pacer_min": 0.05,
+            "pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
         },
-        "extra_init": {"x_da0": 0.1, "x_ado0": 0.1},
+        "extra_init": {"x_da0": 0.1, "x_ado0": 0.1, "pka_d10": 0.5, "pka_d20": 0.5},
+        "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
     },
     "cbt_loop_noSCnoSTN": {
         "drop_rnn": ("n_sc", "n_stn"),
@@ -330,20 +339,31 @@ _CBT_FAMILY_STRUCTURE = {
 }
 
 # --- corticothalamic (2-node ctx/thalamus RNN; architecture-specific) ---
+# Dale's-law corticothalamic testbed: cortex cU/cL/cI + thalamus t_exc/t_inh, all
+# populations sign-constrained (exc/inh). Sizes match the CBT cortex ratios
+# (cU=cL=cI=10) with thalamus 20/10 (2:1 E/I). g is the shared weight gain
+# (fan-in-scaled like the CBT families).
 CORTICOTHALAMIC_RNN_CONFIG = {
-    "n_ctx": 30,
-    "n_t": 30,
+    "n_c_U": 10,
+    "n_c_L": 10,
+    "n_c_inh": 10,
+    "n_t_exc": 20,
+    "n_t_inh": 10,
     "n_output": 1,
     "noise_std": 0.01,
+    "g": 1.0,          # shared weight gain (fan-in-scaled)
+    # Spectral-normalize the assembled loop at init to rho(M)=balanced_target_rho
+    # (reuses loop_init.normalize_loop, same 17-block structure as the CBT families).
+    # Seed-invariant + desaturating, vs hand-tuning g. Applied once; weights trainable after.
+    "balanced_init": True,
+    "balanced_target_rho": 1.0,
 }
 CORTICOTHALAMIC_RUNTIME_CONFIG = {
     "tau_ctx": 20.0,
     "tau_t": 20.0,
-    "rec_scale": 0.15,
-    "cross_scale": 0.15,
-    "in_scale": 0.25,
-    "out_scale": 0.2,
-    "x_init": 0.1,   # initial state (both areas)
+    "in_scale": 0.25,   # cue -> cortex (free-sign external drive)
+    "out_scale": 0.2,   # thalamus -> readout (free-sign)
+    "x_init": 0.1,      # initial state (all populations)
 }
 
 # --- vanilla (single hidden layer RNN; architecture-specific) ---
