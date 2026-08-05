@@ -244,6 +244,12 @@ def init_params(rng_key, n_input):
         # so the task gradient vanishes. See ../loop_init.py and
         # ../corticothalamic/{loop_criticality,loop_gradient,desaturate_sweep}.py.
         # balanced_target_rho is a CONFIG CONSTANT applied once here, never trained.
+        # This family applies no_autapse to the loop self-recurrences at runtime, but
+        # normalize_loop's loop_matrix does not — so zero those diagonals FIRST, and
+        # the realized (no-autapse) rho then hits target exactly (else ~0.005 below).
+        for _k in ("J_cU", "J_cL", "J_c_ii", "J_t_ee", "J_t_ii"):
+            _m = jnp.asarray(params[_k])
+            params[_k] = _m * (1.0 - jnp.eye(_m.shape[0], dtype=_m.dtype))
         params, rho0, rho1 = _loop_init.normalize_loop(
             params, n_c_U, n_c_L, n_c_inh, n_t_exc, n_t_inh,
             tau=config["tau_c"], target_rho=balanced_target_rho,
@@ -380,7 +386,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     m_floor_a2 = config["m_floor_a2"]
     m_d1 = exc(params["m_d1"]) + m_floor
     m_d2 = exc(params["m_d2"]) + m_floor
-    m_a1 = exc(params["m_a1"]) + m_floor_a1
+    # Cap the A1R gain so training can't grow adenosine inhibition on D1 PKA past
+    # the DA drive and collapse dSPN excitability. (D1-preservation guard.)
+    m_a1 = jnp.clip(exc(params["m_a1"]) + m_floor_a1, m_floor_a1, config["m_a1_cap"])
     m_a2 = exc(params["m_a2"]) + m_floor_a2
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
@@ -402,7 +410,6 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         jnp.stack([j_w1[1, 0], j_x[1, 0],  j_w1[1, 1], j_x[1, 1]]),    # I0
         jnp.stack([j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]]),   # I1
     ])
-    j_med = no_autapse(j_med)  # no medullary autapses (zero E0/E1/I0/I1 self-terms)
     b_cL_med = exc(params["B_cL_med"])  # shape (n_med//2, n_c_L): cL → medulla E units
     # SNr → Medulla E units: inhibitory with a minimum magnitude (floored exc,
     # negated) so each weight stays ≤ -snr_med_floor and the tonic gate persists.
@@ -437,6 +444,13 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     tau_ado = config["tau_ado"]
     da_release = config["da_release"]
     ado_release = config["ado_release"]
+    # Mass-action kinetics: PKA pool + DA/adenosine concentration pools each
+    # saturate at their *_max via a (1 - C/C_max) substrate-depletion factor.
+    pka_saturation = config["pka_saturation"]
+    pka_max = config["pka_max"]
+    pka_clip_eps = config["pka_clip_eps"]
+    da_max = config["da_max"]
+    ado_max = config["ado_max"]
     snc_pacer_min = config["snc_pacer_min"]
     snc_pacer_max = config["snc_pacer_max"]
     snr_pacer_max = config["snr_pacer_max"]
@@ -490,47 +504,47 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
         # cortex: cU/cL excitatory PT populations + shared inhibitory c_inh.
         # Snapshot every recurrent/cross-pool drive before overwriting any pool.
-        cU_rec = tanh(j_cU @ x_c_U + b_cL_cU @ x_c_L + j_ci_cU @ x_c_inh)
-        cL_rec = tanh(j_cL @ x_c_L + b_cU_cL @ x_c_U + j_ci_cL @ x_c_inh)
-        ci_rec = tanh(j_cU_ci @ x_c_U + j_cL_ci @ x_c_L + j_c_ii @ x_c_inh)
+        cU_rec = j_cU @ x_c_U + b_cL_cU @ x_c_L + j_ci_cU @ x_c_inh
+        cL_rec = j_cL @ x_c_L + b_cU_cL @ x_c_U + j_ci_cL @ x_c_inh
+        ci_rec = j_cU_ci @ x_c_U + j_cL_ci @ x_c_L + j_c_ii @ x_c_inh
 
         # cU: reciprocal thalamic input + cue.
         x_c_U = (1.0 - 1.0 / tau_c) * x_c_U + (1.0 / tau_c) * cU_rec
-        x_c_U = x_c_U + (1.0 / tau_c) * tanh(b_t_cU @ x_t_exc)
-        x_c_U = x_c_U + (1.0 / tau_c) * tanh(b_cue_cU @ u_t)
+        x_c_U = x_c_U + (1.0 / tau_c) * b_t_cU @ x_t_exc
+        x_c_U = x_c_U + (1.0 / tau_c) * b_cue_cU @ u_t
         x_c_U = nln(x_c_U)
 
         # cL: cue only (no direct thalamic input).
         x_c_L = (1.0 - 1.0 / tau_c) * x_c_L + (1.0 / tau_c) * cL_rec
-        x_c_L = x_c_L + (1.0 / tau_c) * tanh(b_cue_cL @ u_t)
+        x_c_L = x_c_L + (1.0 / tau_c) * b_cue_cL @ u_t
         x_c_L = nln(x_c_L)
 
         # c_inh: recurrent + thalamic feedforward drive only (no direct cue input).
         x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * ci_rec
-        x_c_inh = x_c_inh + (1.0 / tau_c) * tanh(b_t_c_inh @ x_t_exc)
+        x_c_inh = x_c_inh + (1.0 / tau_c) * b_t_c_inh @ x_t_exc
         x_c_inh = nln(x_c_inh)
 
         # thalamus: same pre-step snapshot trick.
-        t_rec_to_exc = tanh(j_t_ee @ x_t_exc + j_t_ei @ x_t_inh)
-        t_rec_to_inh = tanh(j_t_ie @ x_t_exc + j_t_ii @ x_t_inh)
+        t_rec_to_exc = j_t_ee @ x_t_exc + j_t_ei @ x_t_inh
+        t_rec_to_inh = j_t_ie @ x_t_exc + j_t_ii @ x_t_inh
 
         x_t_exc = (1.0 - 1.0 / tau_t) * x_t_exc + (1.0 / tau_t) * t_rec_to_exc
-        x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_cU_t_exc @ x_c_U)
-        x_t_exc = x_t_exc + (1.0 / tau_t) * tanh(b_snr_t_exc @ x_snr)
+        x_t_exc = x_t_exc + (1.0 / tau_t) * b_cU_t_exc @ x_c_U
+        x_t_exc = x_t_exc + (1.0 / tau_t) * b_snr_t_exc @ x_snr
         x_t_exc = nln(x_t_exc)
 
         x_t_inh = (1.0 - 1.0 / tau_t) * x_t_inh + (1.0 / tau_t) * t_rec_to_inh
-        x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_cU_t_inh @ x_c_U)
-        x_t_inh = x_t_inh + (1.0 / tau_t) * tanh(b_snr_t_inh @ x_snr)
+        x_t_inh = x_t_inh + (1.0 / tau_t) * b_cU_t_inh @ x_c_U
+        x_t_inh = x_t_inh + (1.0 / tau_t) * b_snr_t_inh @ x_snr
         x_t_inh = nln(x_t_inh)
 
         x_snc = (1.0 - (1.0 / tau_snc)) * x_snc
         x_snc = x_snc + (1.0 / tau_snc) * snc_pacer
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_stn_snc @ x_stn)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_cL_snc @ x_c_L)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_d1_snc @ x_d1)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_d2_snc @ x_d2)
-        x_snc = x_snc + (1.0 / tau_snc) * tanh(b_gpe_snc @ x_gpe)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_stn_snc @ x_stn)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_cL_snc @ x_c_L)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_d1_snc @ x_d1)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_d2_snc @ x_d2)
+        x_snc = x_snc + (1.0 / tau_snc) * (b_gpe_snc @ x_gpe)
         x_snc = nln(x_snc)
         # SNc firing drives co-release of dopamine and ATP→adenosine into the
         # striatum. Release is proportional to mean SNc activity (scalar tone).
@@ -541,75 +555,90 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # DA and adenosine share the SNc co-release source but clear with
         # independent time constants (tau_da fast, tau_ado slow), so adenosine
         # integrates into a tonic tone while DA tracks phasic SNc bursts.
+        # Mass-action: co-release is throttled by available substrate
+        # (1 - C/C_max), so each concentration pool saturates at ~C_max instead of
+        # accumulating without bound; clearance stays linear.
         release = mean_snc
-        x_da  = x_da  + (1.0 / tau_da)  * (da_release  * release - x_da)
-        x_ado = x_ado + (1.0 / tau_ado) * (ado_release * release - x_ado)
+        x_da  = x_da  + (1.0 / tau_da)  * (da_release  * release * jnp.maximum(1.0 - x_da / da_max, 0.0)  - x_da)
+        x_ado = x_ado + (1.0 / tau_ado) * (ado_release * release * jnp.maximum(1.0 - x_ado / ado_max, 0.0) - x_ado)
 
-        # PKA dynamics (leaky saturatin
+        # PKA dynamics (leaky saturating
         # integrator): exponential leak with
         # tau_pka_fall, rectified production (receptor activation can't make
         # negative cAMP), tanh-saturating output. Asymmetric timescales emerge
         # from the gain ratio tau_fall/tau_rise. Production reads the dynamic
         # striatal DA (x_da) and adenosine (x_ado) concentrations.
         #   D1: D1R (DA) activates PKA; A1R (adenosine) inhibits.
-        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1
-        pka_d1 = pka_d1 + (1.0 / tau_pka_rise) * jnp.maximum(tanh(da_pka_gain * m_d1 * x_da) - tanh(m_a1 * x_ado), 0)
-        pka_d1 = nln(pka_d1)
-
+        # Mass-action-bounded leaky integrator (no per-step nln state squash, which
+        # would destroy the slow tau_pka_fall timescale): production is rectified
+        # (receptor activation can't make negative cAMP) and throttled by available
+        # substrate (1 - pka/pka_max), so the STATE stays in (0,1).
+        prod_d1 = jnp.maximum(da_pka_gain * m_d1 * x_da - m_a1 * x_ado, 0)
         #   D2: A2R (adenosine) activates PKA; D2R (DA) inhibits.
-        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2
-        pka_d2 = pka_d2 + (1.0 / tau_pka_rise) * jnp.maximum(tanh(m_a2 * x_ado) - tanh(da_pka_gain * m_d2 * x_da), 0)
-        pka_d2 = nln(pka_d2)
+        prod_d2 = jnp.maximum(m_a2 * x_ado - da_pka_gain * m_d2 * x_da, 0)
+        if pka_saturation == "mass_action":
+            prod_d1 = prod_d1 * jnp.maximum(1.0 - pka_d1 / pka_max, 0.0)
+            prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
+        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
+        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
+
+        # PKA is bounded to (0,1), so it IS bg_nln's excitability b directly (clip
+        # only insets off the (0,1) endpoints where bg_nln's c/d would diverge).
+        pka_gate_d1 = jnp.clip(pka_d1, pka_clip_eps, 1.0 - pka_clip_eps)
+        pka_gate_d2 = jnp.clip(pka_d2, pka_clip_eps, 1.0 - pka_clip_eps)
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
-        x_d1 = x_d1 + (1.0 / tau_d1) * bg_nln_inh(j_d1 @ x_d1, pka_d1)
-        x_d1 = x_d1 + (1.0 / tau_d1) * bg_nln_inh(b_d2_d1 @ x_d2, pka_d1)
-        x_d1 = x_d1 + (1.0 / tau_d1) * bg_nln(b_cU_d1 @ x_c_U, pka_d1)
-        x_d1 = x_d1 + (1.0 / tau_d1) * bg_nln(stim_d1, pka_d1)
-        x_d1 = bg_nln(x_d1, pka_d1)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (j_d1 @ x_d1)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (b_d2_d1 @ x_d2)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (b_cU_d1 @ x_c_U)
+        x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
+        x_d1 = bg_nln(x_d1, pka_gate_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
-        x_d2 = x_d2 + (1.0 / tau_d2) * bg_nln_inh(j_d2 @ x_d2, pka_d1)
-        x_d2 = x_d2 + (1.0 / tau_d2) * bg_nln_inh(b_d1_d2 @ x_d1, pka_d2)
-        x_d2 = x_d2 + (1.0 / tau_d2) * bg_nln(b_cU_d2 @ x_c_U, pka_d2)
-        x_d2 = x_d2 + (1.0 / tau_d2) * bg_nln(stim_d2, pka_d2)
-        x_d2 = bg_nln(x_d2, pka_d2)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (j_d2 @ x_d2)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (b_d1_d2 @ x_d1)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (b_cU_d2 @ x_c_U)
+        x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
+        x_d2 = bg_nln(x_d2, pka_gate_d2)
 
         x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
         x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer
-        x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_d2_gpe @ x_d2)
-        x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_cU_gpe @ x_c_U)  # cU → GPe (exc)
-        x_gpe = x_gpe + (1.0 / tau_gpe) * tanh(b_stn_gpe @ x_stn)
+        x_gpe = x_gpe + (1.0 / tau_gpe) * b_d2_gpe @ x_d2
+        x_gpe = x_gpe + (1.0 / tau_gpe) * b_cU_gpe @ x_c_U  # cU → GPe (exc)
+        x_gpe = x_gpe + (1.0 / tau_gpe) * b_stn_gpe @ x_stn
         x_gpe = nln(x_gpe)
 
         # subthalamic nucleus: cortical hyperdirect drive + GPe inhibition.
         x_stn = (1.0 - (1.0 / tau_stn)) * x_stn
         x_stn = x_stn + (1.0 / tau_stn) * stn_pacer
-        x_stn = x_stn + (1.0 / tau_stn) * (j_stn @ x_stn)
-        x_stn = x_stn + (1.0 / tau_stn) * tanh(b_cU_stn @ x_c_U)  # hyperdirect (cU)
-        x_stn = x_stn + (1.0 / tau_stn) * tanh(b_cL_stn @ x_c_L)  # hyperdirect (cL)
-        x_stn = x_stn + (1.0 / tau_stn) * tanh(b_gpe_stn @ x_gpe)
+        x_stn = x_stn + (1.0 / tau_stn) * j_stn @ x_stn
+        x_stn = x_stn + (1.0 / tau_stn) * b_cU_stn @ x_c_U  # hyperdirect (cU)
+        x_stn = x_stn + (1.0 / tau_stn) * b_cL_stn @ x_c_L  # hyperdirect (cL)
+        x_stn = x_stn + (1.0 / tau_stn) * b_gpe_stn @ x_gpe
         x_stn = nln(x_stn)
 
         x_snr = (1.0 - (1.0 / tau_snr)) * x_snr
         x_snr = x_snr + (1.0 / tau_snr) * snr_pacer
-        x_snr = x_snr + (1.0 / tau_snr) * tanh(b_d1_snr @ x_d1)
-        x_snr = x_snr + (1.0 / tau_snr) * tanh(b_gpe_snr @ x_gpe)
-        x_snr = x_snr + (1.0 / tau_snr) * tanh(b_stn_snr @ x_stn)
+        x_snr = x_snr + (1.0 / tau_snr) * b_d1_snr @ x_d1
+        x_snr = x_snr + (1.0 / tau_snr) * b_gpe_snr @ x_gpe
+        x_snr = x_snr + (1.0 / tau_snr) * b_stn_snr @ x_stn
         x_snr = nln(x_snr)
 
         # medulla: two E/I pairs with reciprocal coupling; cortical (exc) and
         # inhibitory SNr drive both target the E units only
         x_med = (1.0 - (1.0 / tau_med)) * x_med
-        x_med = x_med + (1.0 / tau_med) * tanh(j_med @ x_med)
-        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_snr_med @ x_snr))  # SNr → Medulla E units only
-        x_med = x_med.at[:2].add((1.0 / tau_med) * tanh(b_cL_med @ x_c_L))  # cL → medulla E units only
+        x_med = x_med + (1.0 / tau_med) * j_med @ x_med
+        x_med = x_med.at[:2].add((1.0 / tau_med) * b_snr_med @ x_snr)  # SNr → Medulla E units only
+        x_med = x_med.at[:2].add((1.0 / tau_med) * b_cL_med @ x_c_L)  # cL → medulla E units only
         x_med = nln(x_med)
 
 
-        #y_t = sigmoid(4.0 * (c_med @ x_med) - 0.5)
-        y_t = nln(c_med @ x_med[:2])  # readout from E units only
+        # Biased sigmoid readout (trainable out_gain/out_bias, already read above):
+        # out_bias=logit(0.25) gives nonzero resting response prob so the policy can
+        # explore. Plain nln(.) capped output ~0.12 with no dynamic range -> reward
+        # stuck at 0 (policy could never reach threshold). Consolidated with cbt_loop.
+        y_t = sigmoid(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
 
         # Pack the full cortex/thalamus state ([exc..., inh...]) into the output
         # so downstream analysis code (get_brain_area, slope, ratios) still sees
