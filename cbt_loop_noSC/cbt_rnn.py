@@ -422,6 +422,10 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     #rb = params["rb"]
 
 
+    # Tonic depolarizing bias added to every loop pool's pre-activation. Lever for
+    # E/I-balance experiments: raise the resting rates toward 0.5 (where nln gain
+    # g=4r(1-r)=1), which lifts the operating-point rho* toward rho_lin. Default 0.
+    ei_tonic = config.get("ei_tonic", 0.0)
     tau_c = config["tau_c"]
     tau_d1 = config["tau_d1"]
     tau_d2 = config["tau_d2"]
@@ -512,17 +516,17 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_c_U = (1.0 - 1.0 / tau_c) * x_c_U + (1.0 / tau_c) * cU_rec
         x_c_U = x_c_U + (1.0 / tau_c) * b_t_cU @ x_t_exc
         x_c_U = x_c_U + (1.0 / tau_c) * b_cue_cU @ u_t
-        x_c_U = nln(x_c_U)
+        x_c_U = nln(x_c_U + ei_tonic)
 
         # cL: cue only (no direct thalamic input).
         x_c_L = (1.0 - 1.0 / tau_c) * x_c_L + (1.0 / tau_c) * cL_rec
         x_c_L = x_c_L + (1.0 / tau_c) * b_cue_cL @ u_t
-        x_c_L = nln(x_c_L)
+        x_c_L = nln(x_c_L + ei_tonic)
 
         # c_inh: recurrent + thalamic feedforward drive only (no direct cue input).
         x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * ci_rec
         x_c_inh = x_c_inh + (1.0 / tau_c) * b_t_c_inh @ x_t_exc
-        x_c_inh = nln(x_c_inh)
+        x_c_inh = nln(x_c_inh + ei_tonic)
 
         # thalamus: same pre-step snapshot trick.
         t_rec_to_exc = j_t_ee @ x_t_exc + j_t_ei @ x_t_inh
@@ -531,12 +535,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_t_exc = (1.0 - 1.0 / tau_t) * x_t_exc + (1.0 / tau_t) * t_rec_to_exc
         x_t_exc = x_t_exc + (1.0 / tau_t) * b_cU_t_exc @ x_c_U
         x_t_exc = x_t_exc + (1.0 / tau_t) * b_snr_t_exc @ x_snr
-        x_t_exc = nln(x_t_exc)
+        x_t_exc = nln(x_t_exc + ei_tonic)
 
         x_t_inh = (1.0 - 1.0 / tau_t) * x_t_inh + (1.0 / tau_t) * t_rec_to_inh
         x_t_inh = x_t_inh + (1.0 / tau_t) * b_cU_t_inh @ x_c_U
         x_t_inh = x_t_inh + (1.0 / tau_t) * b_snr_t_inh @ x_snr
-        x_t_inh = nln(x_t_inh)
+        x_t_inh = nln(x_t_inh + ei_tonic)
 
         x_snc = (1.0 - (1.0 / tau_snc)) * x_snc
         x_snc = x_snc + (1.0 / tau_snc) * snc_pacer
