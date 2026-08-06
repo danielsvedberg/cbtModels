@@ -186,11 +186,11 @@ CBT_RNN_CONFIG = {
 # init_params runtime dict (biophysical constants). Built into `config` by
 # init_params in each cbt_rnn.py so there is one place to edit them.
 CBT_RUNTIME_CONFIG = {
-    "tau_c": 10.0,
+    "tau_c": 7.0,    # ~20 ms EPSP-like single-neuron decay (nln-modified, dt=10 ms)
     "tau_med": 10.0,
     "tau_d1": 10.0,
     "tau_d2": 10.0,
-    "tau_t": 10.0,
+    "tau_t": 7.0,
     "tau_snr": 10.0,
     "tau_gpe": 10.0,
     "tau_stn": 10.0,
@@ -359,8 +359,8 @@ CORTICOTHALAMIC_RNN_CONFIG = {
     "balanced_target_rho": 1.0,
 }
 CORTICOTHALAMIC_RUNTIME_CONFIG = {
-    "tau_ctx": 20.0,
-    "tau_t": 20.0,
+    "tau_ctx": 7.0,   # ~20 ms single-neuron decay (nln-modified) at dt=10 ms
+    "tau_t": 7.0,
     "in_scale": 0.25,   # cue -> cortex (free-sign external drive)
     "out_scale": 0.2,   # thalamus -> readout (free-sign)
     "x_init": 0.1,      # initial state (all populations)
