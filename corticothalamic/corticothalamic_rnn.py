@@ -122,6 +122,10 @@ def corticothalamic_rnn(params, config, inputs, opto_stimulation=None, rng_key=N
 
     tau_c = config["tau_ctx"]; tau_t = config["tau_t"]
     noise_std = config.get("noise_std", 0.0)
+    # Per-synapse nonlinearity: "none" sums synaptic currents linearly (default);
+    # "tanh" wraps EACH synaptic term in tanh() before summing (saturating synapses).
+    _syn_mode = config.get("syn_nln", "none")
+    syn = (lambda z: jnp.tanh(z)) if _syn_mode == "tanh" else (lambda z: z)
 
     n_steps = inputs.shape[0]
     n_ctx = nU + nL + nI; n_t = nTe + nTi
@@ -149,20 +153,21 @@ def corticothalamic_rnn(params, config, inputs, opto_stimulation=None, rng_key=N
         s_cU, s_cL, s_cI = stim_t[:nU], stim_t[nU:nU + nL], stim_t[nU + nL:n_ctx]
         s_te, s_ti = stim_t[n_ctx:n_ctx + nTe], stim_t[n_ctx + nTe:]
 
-        # cortex (snapshot recurrent drives before overwriting)
-        cU_rec = j_cU @ cU + b_cL_cU @ cL + j_ci_cU @ cI
-        cL_rec = j_cL @ cL + b_cU_cL @ cU + j_ci_cL @ cI
-        cI_rec = j_cU_ci @ cU + j_cL_ci @ cL + j_c_ii @ cI
+        # cortex (snapshot recurrent drives before overwriting). syn() = identity
+        # ("none") or tanh() per-term ("tanh").
+        cU_rec = syn(j_cU @ cU) + syn(b_cL_cU @ cL) + syn(j_ci_cU @ cI)
+        cL_rec = syn(j_cL @ cL) + syn(b_cU_cL @ cU) + syn(j_ci_cL @ cI)
+        cI_rec = syn(j_cU_ci @ cU) + syn(j_cL_ci @ cL) + syn(j_c_ii @ cI)
 
-        cU_n = nln((1.0 - 1.0 / tau_c) * cU + (1.0 / tau_c) * (cU_rec + b_t_cU @ te + b_cue_cU @ u_t + b_cU_b + s_cU))
-        cL_n = nln((1.0 - 1.0 / tau_c) * cL + (1.0 / tau_c) * (cL_rec + b_cue_cL @ u_t + b_cL_b + s_cL))
-        cI_n = nln((1.0 - 1.0 / tau_c) * cI + (1.0 / tau_c) * (cI_rec + b_t_c_inh @ te + b_cI_b + s_cI))
+        cU_n = nln((1.0 - 1.0 / tau_c) * cU + (1.0 / tau_c) * (cU_rec + syn(b_t_cU @ te) + syn(b_cue_cU @ u_t) + b_cU_b + s_cU))
+        cL_n = nln((1.0 - 1.0 / tau_c) * cL + (1.0 / tau_c) * (cL_rec + syn(b_cue_cL @ u_t) + b_cL_b + s_cL))
+        cI_n = nln((1.0 - 1.0 / tau_c) * cI + (1.0 / tau_c) * (cI_rec + syn(b_t_c_inh @ te) + b_cI_b + s_cI))
 
         # thalamus
-        te_rec = j_t_ee @ te + j_t_ei @ ti
-        ti_rec = j_t_ie @ te + j_t_ii @ ti
-        te_n = nln((1.0 - 1.0 / tau_t) * te + (1.0 / tau_t) * (te_rec + b_cU_t_exc @ cU + b_te_b + s_te))
-        ti_n = nln((1.0 - 1.0 / tau_t) * ti + (1.0 / tau_t) * (ti_rec + b_cU_t_inh @ cU + b_ti_b + s_ti))
+        te_rec = syn(j_t_ee @ te) + syn(j_t_ei @ ti)
+        ti_rec = syn(j_t_ie @ te) + syn(j_t_ii @ ti)
+        te_n = nln((1.0 - 1.0 / tau_t) * te + (1.0 / tau_t) * (te_rec + syn(b_cU_t_exc @ cU) + b_te_b + s_te))
+        ti_n = nln((1.0 - 1.0 / tau_t) * ti + (1.0 / tau_t) * (ti_rec + syn(b_cU_t_inh @ cU) + b_ti_b + s_ti))
 
         y_t = nln(w_out_t @ te_n + b_out)
         x_ctx_n = jnp.concatenate([cU_n, cL_n, cI_n])
