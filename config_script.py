@@ -47,7 +47,7 @@ CBT_FAMILIES = ("cbt_loop", "cbt_loop_noSC", "cbt_loop_noSCnoSTN")
 # =========================================================================== #
 SEED_CONFIG = {
     "task_seed": 13,
-    "train_seed": 3,
+    "train_seed": 0,
 }
 
 OPTIM_CONFIG = {
@@ -196,7 +196,7 @@ CBT_RUNTIME_CONFIG = {
     "tau_stn": 10.0,
     "tau_sc": 10.0,
     "tau_snc": 10.0,
-    "tau_pka_fall": 500.0,
+    "tau_pka_fall": 900.0,  # moderate lengthening: longer memory than 500, less saturated than 1440
     "tau_pka_rise": 10.0,
     "m_floor": 0.001,
     "snr_med_floor": 0.1,
