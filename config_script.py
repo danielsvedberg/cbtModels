@@ -47,7 +47,7 @@ CBT_FAMILIES = ("cbt_loop", "cbt_loop_noSC", "cbt_loop_noSCnoSTN")
 # =========================================================================== #
 SEED_CONFIG = {
     "task_seed": 13,
-    "train_seed": 0,
+    "train_seed": 4,
 }
 
 OPTIM_CONFIG = {
@@ -331,9 +331,14 @@ _CBT_FAMILY_STRUCTURE = {
         # PKA redesign PORTED from cbt_loop: mass-action-bounded PKA fed directly to
         # bg_nln (no soft-threshold gate / no per-step state squash), capped A1R,
         # clamped PKA inits, balanced adenosine. Same values as cbt_loop.
+        # Dynamic DA/adenosine concentration model PORTED from noSC (mass-action
+        # x_da/x_ado states; DA fast, adenosine slow; substrate-bounded at *_max).
         "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
-                          "pka_init_floor": 0.4, "pka_init_cap": 0.6},
-        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5},
+                          "pka_init_floor": 0.4, "pka_init_cap": 0.6,
+                          "tau_da": 20.0, "tau_ado": 200.0,
+                          "da_release": 1.0, "ado_release": 1.0,
+                          "da_max": 1.0, "ado_max": 1.0},
+        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5, "x_da0": 0.1, "x_ado0": 0.1},
         "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
     },
 }

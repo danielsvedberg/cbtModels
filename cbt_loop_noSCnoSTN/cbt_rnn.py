@@ -58,9 +58,16 @@ def match_input_channels(inputs, params):
 # Canonical state tuple order used across CBT loop code.
 STATE_VAR_ORDER = (
     "x_c", "x_d1", "x_d2", "x_snc", "x_gpe", "x_snr", "x_t", "pka_d1", "pka_d2", "x_med",
+    "x_da", "x_ado",
 )
 STATE_AREA_ORDER = (
     "Cortex", "D1", "D2", "SNc", "GPe", "SNr", "Thalamus", "pkaD1", "pkaD2", "Medulla",
+    "DA", "Adenosine",
+)
+# DA / adenosine are neuromodulator concentration states (not firing rates), so
+# skip them (with PKA + Medulla) from the dead-area inactivity floor.
+DEAD_AREA_SKIP_INDICES = tuple(
+    STATE_AREA_ORDER.index(a) for a in ("pkaD1", "pkaD2", "Medulla", "DA", "Adenosine")
 )
 
 
@@ -198,6 +205,9 @@ def init_params(rng_key, n_input):
         "x_med0": jnp.ones((n_med,)) * _is["x_med0"],
         "pka_d10": jnp.ones((n_d1,)) * _is["pka_d10"],
         "pka_d20": jnp.ones((n_d2,)) * _is["pka_d20"],
+        # Dynamic DA / adenosine concentration initial states (scalars).
+        "x_da0": jnp.array(_is["x_da0"]),
+        "x_ado0": jnp.array(_is["x_ado0"]),
         # Adenosine: one tunable tonic level k_a (scalar — will become a
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
@@ -259,6 +269,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     _pka_lo = config["pka_init_floor"]; _pka_hi = config["pka_init_cap"]
     pka_d10  = jnp.clip(jnp.asarray(params["pka_d10"]), _pka_lo, _pka_hi)
     pka_d20  = jnp.clip(jnp.asarray(params["pka_d20"]), _pka_lo, _pka_hi)
+    x_da0    = jnp.asarray(params["x_da0"])
+    x_ado0   = jnp.asarray(params["x_ado0"])
 
 
     rng_key = jr.PRNGKey(0) if rng_key is None else rng_key
@@ -402,7 +414,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # with a live gradient across the full range.
     k_a_floor = config["k_a_floor"]
     k_a_cap = config["k_a_cap"]
-    k_a = k_a_floor + exc(jnp.asarray(params["k_a"])) * (k_a_cap - k_a_floor)
+    k_a = k_a_floor + exc(jnp.asarray(params["k_a"])) * (k_a_cap - k_a_floor)  # (legacy; unused with dynamic DA/adenosine)
+    # Dynamic DA / adenosine concentration model (mass-action), ported from noSC.
+    tau_da = config["tau_da"]; tau_ado = config["tau_ado"]
+    da_release = config["da_release"]; ado_release = config["ado_release"]
+    da_max = config["da_max"]; ado_max = config["ado_max"]
 
     snc_pacer_max = config["snc_pacer_max"]
     snc_pacer_min = config["snc_pacer_min"]
@@ -427,7 +443,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         (x_d1, x_d2,
          x_c_U, x_c_L, x_c_inh,
          x_t_exc, x_t_inh,
-         x_snr, x_gpe, x_snc, pka_d1, pka_d2, x_med) = carry
+         x_snr, x_gpe, x_snc, pka_d1, pka_d2, x_med, x_da, x_ado) = carry
         u_t, stim_t, step_rng = inp_stim_rng
         stim_d1 = stim_t[:n_d1_cells]
         stim_d2 = stim_t[n_d1_cells:]
@@ -498,6 +514,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # SNc is broadcast as a single scalar to every SPN; each SPN scales it
         # by its own per-neuron gain m_d1[i] / m_d2[i].
         mean_snc = jnp.mean(x_snc)
+        # Mass-action DA / adenosine concentrations co-released by SNc; DA fast
+        # (tau_da), adenosine slow (tau_ado). Substrate-throttled to saturate at *_max.
+        release = mean_snc
+        x_da  = x_da  + (1.0 / tau_da)  * (da_release  * release * jnp.maximum(1.0 - x_da / da_max, 0.0)  - x_da)
+        x_ado = x_ado + (1.0 / tau_ado) * (ado_release * release * jnp.maximum(1.0 - x_ado / ado_max, 0.0) - x_ado)
 
         # PKA dynamics (leaky saturating integrator):
         # exponential leak with tau_pka_fall, rectified DA-driven production
@@ -508,8 +529,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # rectified (biological), throttled by available-substrate (1-pka/pka_max)
         # so the STATE stays in (0,1); the leak stays linear so tau_pka_fall really
         # sets the timescale (no per-step sigmoid squash, which would destroy it).
-        prod_d1 = jnp.maximum(da_pka_gain * m_d1 * mean_snc - m_a1 * k_a, 0)
-        prod_d2 = jnp.maximum(m_a2 * k_a - da_pka_gain * m_d2 * mean_snc, 0)
+        prod_d1 = jnp.maximum(da_pka_gain * m_d1 * x_da - m_a1 * x_ado, 0)
+        prod_d2 = jnp.maximum(m_a2 * x_ado - da_pka_gain * m_d2 * x_da, 0)
         if pka_saturation == "mass_action":
             prod_d1 = prod_d1 * jnp.maximum(1.0 - pka_d1 / pka_max, 0.0)
             prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
@@ -569,20 +590,20 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         new_carry = (x_d1, x_d2,
                      x_c_U, x_c_L, x_c_inh,
                      x_t_exc, x_t_inh,
-                     x_snr, x_gpe, x_snc, pka_d1, pka_d2, x_med)
-        out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_snr, x_t, pka_d1, pka_d2, x_med)
+                     x_snr, x_gpe, x_snc, pka_d1, pka_d2, x_med, x_da, x_ado)
+        out = (y_t, x_c, x_d1, x_d2, x_snc, x_gpe, x_snr, x_t, pka_d1, pka_d2, x_med, x_da, x_ado)
         return new_carry, out
 
     step_keys = jr.split(step_key, n_steps)
-    _, (ys, xc, xd1, xd2, xsnc, xgpe, xsnr, xt, pkad1, pkad2, xmed) = lax.scan(
+    _, (ys, xc, xd1, xd2, xsnc, xgpe, xsnr, xt, pkad1, pkad2, xmed, xda, xado) = lax.scan(
         _step,
         (x_d10, x_d20,
          x_c0_U, x_c0_L, x_c0_inh,
          x_t0_exc, x_t0_inh,
-         x_snr0, x_gpe0, x_snc0, pka_d10, pka_d20, x_med0),
+         x_snr0, x_gpe0, x_snc0, pka_d10, pka_d20, x_med0, x_da0, x_ado0),
         (inputs, opto_stimulation, step_keys),
     )
-    return ys, (xc, xd1, xd2, xsnc, xgpe, xsnr, xt, pkad1, pkad2, xmed)
+    return ys, (xc, xd1, xd2, xsnc, xgpe, xsnr, xt, pkad1, pkad2, xmed, xda, xado)
 
 
 batched_rnn = vmap(multiregion_rnn, in_axes=(None, None, 0, 0, 0))
@@ -601,7 +622,7 @@ def rnn_func(params, config, batch_inputs, opto_stim, rng_keys):
     # full state tuple ``xs`` is returned last so the loss can enforce an
     # activity floor on *every* area (dead-area / inactivity penalty), not just GPe.
     gpe = xs[STATE_AREA_ORDER.index("GPe")]
-    return ys, xs[-3], xs[-2], gpe, xs
+    return ys, xs[STATE_AREA_ORDER.index("pkaD1")], xs[STATE_AREA_ORDER.index("pkaD2")], gpe, xs, DEAD_AREA_SKIP_INDICES
 
 
 def evaluate(params, config, all_inputs, noise_std=None, n_seeds=8):
