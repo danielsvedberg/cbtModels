@@ -1,5 +1,23 @@
 # 📑 Documentation Index
 
+## 🔬 Model findings (criticality, timescales, self-timing) — 2026-07 → 2026-08
+
+The measured results from the model-architecture investigation (spectral
+normalization, membrane-τ calibration, the PKA clock, self-timing across families):
+
+- **`criticality_and_timescales.md`** — `balanced_init` and the optimal `rho=1.0`;
+  no-autapse's (small) effect; tanh synapses shorten memory (recoverable with τ);
+  membrane τ=7 → ~20 ms EPSP decay; the three nested timescales (neuron ~20 ms /
+  loop ~300 ms / PKA ~9 s).
+- **`self_timing_findings.md`** — all three CBT families self-time; timing rides the
+  slow PKA clock (not loop memory); the trade-offs; the fragile seed-gated basin.
+- **`neuromodulator_model.md`** — mass-action PKA-as-`b` (gate-free), the D1
+  guards, static-`k_a` vs dynamic DA/adenosine concentration flavors, `tau_pka_fall`.
+- **`parameter_findings.md`** — the earlier (2026-07) fixes: spectral normalization
+  + `log_reward` objective that first made the model learnable.
+
+---
+
 ## For Your Self-Timed Movement Task Implementation
 
 ### 🚀 Getting Started (READ FIRST)
