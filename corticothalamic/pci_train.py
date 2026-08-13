@@ -9,13 +9,17 @@ redundant ("more complex") ensemble transient.
 We turn this into a training objective for the loop's weights, with three guards the
 user asked for:
 
-  1. delta_PCI, not raw PCI.  PCI is measured on both a PRE-stim window and a POST-stim
-     window (equal length, same per-unit baseline threshold).  We reward
-     `comp(post) - comp(pre)`, so a network cannot win by being complex at BASELINE --
-     only by the *increase* the perturbation evokes.
+  1. raw POST-perturbation PCI as the first reward term.  PCI is still measured on both
+     a PRE-stim and a POST-stim window (equal length, same per-unit baseline threshold),
+     but the reward's first term is the raw post-stim complexity `comp(post)`, NOT the
+     delta `comp(post) - comp(pre)`.  Being complex at baseline is instead held back by
+     guards (2) and (3) below rather than by subtraction.  (The pre-window PCI is still
+     computed and reported for diagnostics.)
 
-  2. explicit baseline-calmness penalty.  We additionally penalize the pre-window
-     activity std, so the resting state is pushed to be quiescent/stable.
+  2. NO baseline penalty.  PCI already rewards a low->high transition and the zip measure
+     already penalizes saturation (a uniformly "on" post-window compresses to almost
+     nothing), so no explicit pre-stim quiescence term is used. `base_std` is reported as
+     a diagnostic only.
 
   3. anti-spontaneous (catch-trial) penalty with jitter.  Half the trials are CATCH
      trials: identical timing distribution, no perturbation.  The perturbation time is
@@ -164,20 +168,25 @@ def pci_windows(X_pop, t_stim, is_stim, cfg):
 def rewards_from_pci(pw, cfg):
     """Scalar reward per population member from the PCI window measurements.
 
-    reward = evoked_delta_PCI  -  lam_spont * spontaneous  -  lam_calm * baseline_std
+    reward = post_PCI  -  lam_spont * spontaneous
 
-      evoked      = mean over STIM trials of (comp_post - comp_pre)
+      post_PCI    = mean over STIM trials of comp_post   (raw post-perturbation PCI)
       spontaneous = mean over CATCH trials of max(comp_post - comp_pre, 0)
-      calm        = mean over ALL trials of the pre-window activity std
+
+    Nothing is subtracted from the stimulated response: the first term is the RAW
+    post-perturbation complexity. The only penalty is the catch-trial spontaneous term,
+    which ties the complexity to the stimulus (a network complex WITHOUT a perturbation
+    pays here). `base_std` is still reported as a diagnostic but does not enter the
+    reward -- PCI itself already rewards a low->high transition and the zip measure
+    already penalizes saturation, so no explicit baseline term is needed.
     """
     is_stim = pw["is_stim"]
-    dcomp = pw["comp_post"] - pw["comp_pre"]      # (pop, trials)  delta_PCI per trial
-    stim = dcomp[:, is_stim].mean(axis=1)         # (pop,)
-    catch_d = dcomp[:, ~is_stim]
-    spont = np.maximum(catch_d, 0.0).mean(axis=1) if catch_d.shape[1] else np.zeros_like(stim)
-    calm = pw["base_std"].mean(axis=1)            # (pop,)
-    reward = stim - cfg["lam_spont"] * spont - cfg["lam_calm"] * calm
-    return reward, {"evoked": stim, "spont": spont, "calm": calm}
+    post = pw["comp_post"][:, is_stim].mean(axis=1)   # (pop,)  raw post-stim PCI
+    catch_d = (pw["comp_post"] - pw["comp_pre"])[:, ~is_stim]
+    spont = np.maximum(catch_d, 0.0).mean(axis=1) if catch_d.shape[1] else np.zeros_like(post)
+    calm = pw["base_std"].mean(axis=1)                # (pop,)  diagnostic only
+    reward = post - cfg["lam_spont"] * spont
+    return reward, {"post_pci": post, "spont": spont, "calm": calm}
 
 
 # --------------------------------------------------------------------------------------
@@ -189,6 +198,44 @@ def _rank_utilities(rewards):
     ranks = np.empty(n)
     ranks[np.argsort(rewards)] = np.arange(n)
     return ranks / (n - 1) - 0.5
+
+
+# The 5 within-population loop blocks whose self-diagonal the forward pass zeros
+# (no_autapse). ES perturbs the diagonal back in, so we must zero it before any rho
+# computation/renormalization to match the actual dynamics.
+_DIAG_BLOCKS = ("J_cU", "J_cL", "J_c_ii", "J_t_ee", "J_t_ii")
+
+
+def _zero_loop_diag(theta):
+    out = dict(theta)
+    for key in _DIAG_BLOCKS:
+        m = jnp.asarray(out[key])
+        out[key] = m * (1.0 - jnp.eye(m.shape[0], dtype=m.dtype))
+    return out
+
+
+def loop_rho(theta, config):
+    """rho_lin of the loop AS THE FORWARD PASS SEES IT (self-diagonals zeroed)."""
+    signed = config.get("weight_mode", "dale_abs") == "signed"
+    p = {k: np.asarray(v) for k, v in _zero_loop_diag(theta).items()}
+    return loop_init.spectral_radius(
+        p, config["n_c_U"], config["n_c_L"], config["n_c_inh"],
+        config["n_t_exc"], config["n_t_inh"], config["tau_ctx"], signed)
+
+
+def pin_rho(theta, config, target):
+    """Rescale the 17 loop blocks so rho_lin == target (restoring force vs ES drift).
+
+    Only the loop blocks are touched (one global factor); the cue/readout/bias params
+    and all *structure* within the loop are preserved. Self-diagonals are zeroed first
+    so the pinned rho matches the no-autapse forward pass exactly.
+    """
+    signed = config.get("weight_mode", "dale_abs") == "signed"
+    p = {k: np.asarray(v) for k, v in _zero_loop_diag(theta).items()}
+    p, _, _ = loop_init.normalize_loop(
+        p, config["n_c_U"], config["n_c_L"], config["n_c_inh"],
+        config["n_t_exc"], config["n_t_inh"], config["tau_ctx"], target, signed)
+    return {k: jnp.asarray(v) for k, v in p.items()}
 
 
 def es_gradient(theta, sigma, half_eps, utilities, pop):
@@ -230,6 +277,17 @@ def train(args):
     config = dict(config)
     config["noise_std"] = args.noise_std
 
+    # signed-mask mode: switch the loop to linear effective weights (sign*theta) so the
+    # ES rho-inflation bias from the |.| rectifier is removed. Loop blocks are made
+    # positive (theta = |param|) so the initial network is identical (sign*|param|) and
+    # Dale-correct; the parameterization becomes linear from here on.
+    if not args.load and args.weight_mode == "signed":
+        for key in loop_init.LOOP_BLOCKS:
+            params[key] = jnp.abs(jnp.asarray(params[key]))
+        config["weight_mode"] = "signed"
+    elif args.load:
+        config.setdefault("weight_mode", "dale_abs")
+
     N = config["x_ctx0"].shape[0] + config["x_t0"].shape[0]
     nU = config["n_c_U"]
     cfg = dict(
@@ -237,7 +295,7 @@ def train(args):
         t_lo=args.t_lo, t_hi=args.t_hi,
         stim_units=list(range(nU)), stim_amp=args.stim_amp, stim_dur=args.stim_dur,
         thr_k=args.thr_k, sd_floor=args.sd_floor,
-        lam_spont=args.lam_spont, lam_calm=args.lam_calm,
+        lam_spont=args.lam_spont,
     )
 
     theta = {k: jnp.asarray(v) for k, v in params.items()}
@@ -246,11 +304,13 @@ def train(args):
     pop = args.pop - (args.pop % 2)
     half = pop // 2
 
-    history = {"gen": [], "reward": [], "evoked": [], "spont": [], "calm": [], "rho": [],
+    history = {"gen": [], "reward": [], "post_pci": [], "spont": [], "calm": [], "rho": [],
                "val_reward": []}
     best = {"reward": -np.inf, "theta": None, "gen": -1}
     print(f"[pci_train] N={N} units, pop={pop}, sigma={args.sigma}, lr={args.lr}, "
-          f"{args.stim_trials} stim + {args.catch_trials} catch trials/eval")
+          f"{args.stim_trials} stim + {args.catch_trials} catch trials/eval, "
+          f"weight_mode={config.get('weight_mode', 'dale_abs')}, "
+          f"pin_rho={args.pin_rho}")
     t0 = time.time()
     for gen in range(args.generations):
         rng, k_eps, k_tr = jr.split(rng, 3)
@@ -272,12 +332,11 @@ def train(args):
         g = es_gradient(theta, args.sigma, half_eps, util, pop)
         updates, opt_state = opt.update({k: -g[k] for k in g}, opt_state, theta)  # ascend
         theta = optax.apply_updates(theta, updates)
+        if args.pin_rho is not None:
+            theta = pin_rho(theta, config, args.pin_rho)  # restoring force vs rho drift
 
         if gen % args.log_interval == 0 or gen == args.generations - 1:
-            rho = loop_init.spectral_radius(
-                {k: np.asarray(v) for k, v in theta.items()},
-                config["n_c_U"], config["n_c_L"], config["n_c_inh"],
-                config["n_t_exc"], config["n_t_inh"], config["tau_ctx"])
+            rho = loop_rho(theta, config)
             val_r, val_c = validation_reward(theta, config, cfg, args.val_trials, 12345)
             if val_r > best["reward"]:
                 best = {"reward": val_r, "theta": {k: np.asarray(v) for k, v in theta.items()},
@@ -285,12 +344,12 @@ def train(args):
             history["gen"].append(gen)
             history["reward"].append(float(reward.mean()))
             history["val_reward"].append(val_r)
-            history["evoked"].append(val_c["evoked"])
+            history["post_pci"].append(val_c["post_pci"])
             history["spont"].append(val_c["spont"])
             history["calm"].append(val_c["calm"])
             history["rho"].append(rho)
             print(f"  gen {gen:4d}  val_reward {val_r:7.2f}  "
-                  f"evoked_dPCI {val_c['evoked']:7.2f}  "
+                  f"post_PCI {val_c['post_pci']:7.2f}  "
                   f"spont {val_c['spont']:6.2f}  "
                   f"calm {val_c['calm']:.4f}  rho {rho:.3f}  "
                   f"{'*BEST' if best['gen']==gen else '':5s}[{time.time()-t0:.0f}s]")
@@ -322,7 +381,7 @@ def evaluate(args):
         cfg = dict(T=args.T, N=N, n_input=1, W=args.window, t_lo=args.t_lo, t_hi=args.t_hi,
                    stim_units=list(range(nU)), stim_amp=args.stim_amp, stim_dur=args.stim_dur,
                    thr_k=args.thr_k, sd_floor=args.sd_floor,
-                   lam_spont=args.lam_spont, lam_calm=args.lam_calm)
+                   lam_spont=args.lam_spont)
 
     rng = jr.PRNGKey(args.seed)
     n_stim = n_catch = args.eval_trials
@@ -403,9 +462,9 @@ def _plot_eval(X1, pw, t_stim, is_stim, cfg, history, out_plot):
     # training curve
     if history and history["gen"]:
         h = history
-        ax[1, 2].plot(h["gen"], h["evoked"], label="evoked ΔPCI", color="C3")
-        ax[1, 2].plot(h["gen"], h["spont"], label="spontaneous", color="C0")
-        ax[1, 2].set_xlabel("generation"); ax[1, 2].set_ylabel("ΔPCI (zip bytes)")
+        ax[1, 2].plot(h["gen"], h["post_pci"], label="post PCI (stim)", color="C3")
+        ax[1, 2].plot(h["gen"], h["spont"], label="spontaneous ΔPCI", color="C0")
+        ax[1, 2].set_xlabel("generation"); ax[1, 2].set_ylabel("PCI (zip bytes)")
         ax[1, 2].set_title("training (ES)"); ax[1, 2].legend(loc="upper left")
         axr = ax[1, 2].twinx()
         axr.plot(h["gen"], h["calm"], "--", color="C2", label="baseline std")
@@ -441,13 +500,21 @@ def build_argparser():
     p.add_argument("--thr-k", type=float, default=2.5, help="significance = k*baseline std")
     p.add_argument("--sd-floor", type=float, default=1e-3)
     # objective weights
-    p.add_argument("--lam-spont", type=float, default=1.0)
-    p.add_argument("--lam-calm", type=float, default=200.0)
+    p.add_argument("--lam-spont", type=float, default=1.0,
+                   help="weight on the catch-trial spontaneous penalty (the only "
+                        "penalty; ties evoked complexity to the stimulus)")
     # ES
     p.add_argument("--generations", type=int, default=300)
     p.add_argument("--pop", type=int, default=128)
     p.add_argument("--sigma", type=float, default=0.02)
     p.add_argument("--lr", type=float, default=0.02)
+    p.add_argument("--pin-rho", type=float, default=None,
+                   help="renormalize the loop to this rho_lin every generation "
+                        "(restoring force against the ES rho drift; off if unset)")
+    p.add_argument("--weight-mode", choices=["dale_abs", "signed"], default="dale_abs",
+                   help="dale_abs: exc=|w| (default, but its convexity biases rho up "
+                        "under symmetric ES noise). signed: exc=w linear (bias-free; "
+                        "near-zero synapses may flip sign).")
     p.add_argument("--stim-trials", type=int, default=16)
     p.add_argument("--catch-trials", type=int, default=16)
     p.add_argument("--val-trials", type=int, default=40,

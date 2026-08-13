@@ -105,16 +105,26 @@ def corticothalamic_rnn(params, config, inputs, opto_stimulation=None, rng_key=N
     nU, nL, nI = config["n_c_U"], config["n_c_L"], config["n_c_inh"]
     nTe, nTi = config["n_t_exc"], config["n_t_inh"]
 
+    # Dale sign application. 'dale_abs' (default): exc=|w|, inh=-|w| (hard nonneg
+    # magnitude; convex, so symmetric ES noise inflates rho). 'signed': exc=w, inh=-w
+    # applied to an init-positive signed magnitude -- LINEAR, so ES perturbs symmetrically
+    # and the rho-inflation bias vanishes (a near-zero synapse may transiently flip sign).
+    if config.get("weight_mode", "dale_abs") == "signed":
+        _exc = lambda w: w
+        _inh = lambda w: -w
+    else:
+        _exc, _inh = exc, inh
+
     # Sign-constrained effective weights (no_autapse on square self-recurrences).
-    j_cU = _no_autapse(exc(params["J_cU"]));  j_cL = _no_autapse(exc(params["J_cL"]))
-    b_cU_cL = exc(params["B_cU_cL"]);  b_cL_cU = exc(params["B_cL_cU"])
-    j_cU_ci = exc(params["J_cU_ci"]);  j_cL_ci = exc(params["J_cL_ci"])
-    j_ci_cU = inh(params["J_ci_cU"]);  j_ci_cL = inh(params["J_ci_cL"])
-    j_c_ii = _no_autapse(inh(params["J_c_ii"]))
-    j_t_ee = _no_autapse(exc(params["J_t_ee"]));  j_t_ii = _no_autapse(inh(params["J_t_ii"]))
-    j_t_ei = inh(params["J_t_ei"]);  j_t_ie = exc(params["J_t_ie"])
-    b_t_cU = exc(params["B_t_cU"]);  b_t_c_inh = exc(params["B_t_c_inh"])
-    b_cU_t_exc = exc(params["B_cU_t_exc"]);  b_cU_t_inh = exc(params["B_cU_t_inh"])
+    j_cU = _no_autapse(_exc(params["J_cU"]));  j_cL = _no_autapse(_exc(params["J_cL"]))
+    b_cU_cL = _exc(params["B_cU_cL"]);  b_cL_cU = _exc(params["B_cL_cU"])
+    j_cU_ci = _exc(params["J_cU_ci"]);  j_cL_ci = _exc(params["J_cL_ci"])
+    j_ci_cU = _inh(params["J_ci_cU"]);  j_ci_cL = _inh(params["J_ci_cL"])
+    j_c_ii = _no_autapse(_inh(params["J_c_ii"]))
+    j_t_ee = _no_autapse(_exc(params["J_t_ee"]));  j_t_ii = _no_autapse(_inh(params["J_t_ii"]))
+    j_t_ei = _inh(params["J_t_ei"]);  j_t_ie = _exc(params["J_t_ie"])
+    b_t_cU = _exc(params["B_t_cU"]);  b_t_c_inh = _exc(params["B_t_c_inh"])
+    b_cU_t_exc = _exc(params["B_cU_t_exc"]);  b_cU_t_inh = _exc(params["B_cU_t_inh"])
     b_cue_cU = params["B_cue_cU"];  b_cue_cL = params["B_cue_cL"]   # free-sign external
     w_out_t = params["w_out_t"]
     b_cU_b, b_cL_b, b_cI_b = params["b_cU"], params["b_cL"], params["b_cI"]

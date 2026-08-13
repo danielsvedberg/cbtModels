@@ -48,8 +48,15 @@ LOOP_EDGES = (
 LOOP_BLOCKS = tuple(e[2] for e in LOOP_EDGES)
 
 
-def loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI):
-    """Dense signed recurrent matrix W of the loop (state order cU,cL,cI,tE,tI)."""
+def loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI, signed=False):
+    """Dense signed recurrent matrix W of the loop (state order cU,cL,cI,tE,tI).
+
+    signed=False (default, Dale-abs mode): effective weight = block_sign * |param|.
+    signed=True (signed-mask mode): effective weight = block_sign * param, i.e. the
+    param is used linearly (it is the signed magnitude, init-positive). This matches the
+    forward pass when weight_mode='signed' and makes W a *linear* function of the params
+    (so symmetric ES perturbations don't inflate rho via the |.| rectifier's convexity).
+    """
     sizes = (("cU", n_cU), ("cL", n_cL), ("cI", n_cI), ("tE", n_tE), ("tI", n_tI))
     idx, off = {}, 0
     for name, sz in sizes:
@@ -57,23 +64,24 @@ def loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI):
         off += sz
     W = np.zeros((off, off))
     for post, pre, key, sign in LOOP_EDGES:
-        W[idx[post], idx[pre]] = sign * np.abs(np.asarray(params[key]))
+        val = np.asarray(params[key])
+        W[idx[post], idx[pre]] = sign * (val if signed else np.abs(val))
     return W
 
 
-def spectral_radius(params, n_cU, n_cL, n_cI, n_tE, n_tI, tau):
+def spectral_radius(params, n_cU, n_cL, n_cI, n_tE, n_tI, tau, signed=False):
     """rho of the loop's update map M = (1-1/tau) I + (1/tau) W."""
-    lam = np.linalg.eigvals(loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI))
+    lam = np.linalg.eigvals(loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI, signed))
     return float(np.max(np.abs((1.0 - 1.0 / tau) + lam / tau)))
 
 
-def normalize_loop(params, n_cU, n_cL, n_cI, n_tE, n_tI, tau, target_rho):
+def normalize_loop(params, n_cU, n_cL, n_cI, n_tE, n_tI, tau, target_rho, signed=False):
     """Scale the 17 loop blocks by one factor so rho(M) == target_rho.
 
     Returns (new_params, rho_before, rho_after). Only loop blocks are touched;
     every other projection (cue, BG, readout) is left alone.
     """
-    lam = np.linalg.eigvals(loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI))
+    lam = np.linalg.eigvals(loop_matrix(params, n_cU, n_cL, n_cI, n_tE, n_tI, signed))
     shift = 1.0 - 1.0 / tau
     rho_of = lambda s: float(np.max(np.abs(shift + (s / tau) * lam)))
     rho_before = rho_of(1.0)
