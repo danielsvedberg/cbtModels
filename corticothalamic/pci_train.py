@@ -216,11 +216,10 @@ def _zero_loop_diag(theta):
 
 def loop_rho(theta, config):
     """rho_lin of the loop AS THE FORWARD PASS SEES IT (self-diagonals zeroed)."""
-    signed = config.get("weight_mode", "dale_abs") == "signed"
     p = {k: np.asarray(v) for k, v in _zero_loop_diag(theta).items()}
     return loop_init.spectral_radius(
         p, config["n_c_U"], config["n_c_L"], config["n_c_inh"],
-        config["n_t_exc"], config["n_t_inh"], config["tau_ctx"], signed)
+        config["n_t_exc"], config["n_t_inh"], config["tau_ctx"])
 
 
 def pin_rho(theta, config, target):
@@ -230,11 +229,10 @@ def pin_rho(theta, config, target):
     and all *structure* within the loop are preserved. Self-diagonals are zeroed first
     so the pinned rho matches the no-autapse forward pass exactly.
     """
-    signed = config.get("weight_mode", "dale_abs") == "signed"
     p = {k: np.asarray(v) for k, v in _zero_loop_diag(theta).items()}
     p, _, _ = loop_init.normalize_loop(
         p, config["n_c_U"], config["n_c_L"], config["n_c_inh"],
-        config["n_t_exc"], config["n_t_inh"], config["tau_ctx"], target, signed)
+        config["n_t_exc"], config["n_t_inh"], config["tau_ctx"], target)
     return {k: jnp.asarray(v) for k, v in p.items()}
 
 
@@ -269,6 +267,16 @@ def train(args):
 
     rng = jr.PRNGKey(args.seed)
     rng, k_init = jr.split(rng)
+    # optional pool-size override (patch central config before init so the loop is
+    # built at the requested thalamus sizes, e.g. to match noSCnoSTN t_exc=10/t_inh=5)
+    if args.n_t_exc is not None or args.n_t_inh is not None:
+        import config_script as _cs
+        if args.n_t_exc is not None:
+            _cs.CORTICOTHALAMIC_RNN_CONFIG["n_t_exc"] = args.n_t_exc
+        if args.n_t_inh is not None:
+            _cs.CORTICOTHALAMIC_RNN_CONFIG["n_t_inh"] = args.n_t_inh
+        print(f"[pool override] n_t_exc={_cs.CORTICOTHALAMIC_RNN_CONFIG['n_t_exc']}, "
+              f"n_t_inh={_cs.CORTICOTHALAMIC_RNN_CONFIG['n_t_inh']}")
     params, config = ctrnn.init_params(k_init, n_input=1)
     if args.load:
         with open(args.load, "rb") as f:
@@ -276,17 +284,6 @@ def train(args):
         params, config = d["params"], d["config"]
     config = dict(config)
     config["noise_std"] = args.noise_std
-
-    # signed-mask mode: switch the loop to linear effective weights (sign*theta) so the
-    # ES rho-inflation bias from the |.| rectifier is removed. Loop blocks are made
-    # positive (theta = |param|) so the initial network is identical (sign*|param|) and
-    # Dale-correct; the parameterization becomes linear from here on.
-    if not args.load and args.weight_mode == "signed":
-        for key in loop_init.LOOP_BLOCKS:
-            params[key] = jnp.abs(jnp.asarray(params[key]))
-        config["weight_mode"] = "signed"
-    elif args.load:
-        config.setdefault("weight_mode", "dale_abs")
 
     N = config["x_ctx0"].shape[0] + config["x_t0"].shape[0]
     nU = config["n_c_U"]
@@ -309,7 +306,6 @@ def train(args):
     best = {"reward": -np.inf, "theta": None, "gen": -1}
     print(f"[pci_train] N={N} units, pop={pop}, sigma={args.sigma}, lr={args.lr}, "
           f"{args.stim_trials} stim + {args.catch_trials} catch trials/eval, "
-          f"weight_mode={config.get('weight_mode', 'dale_abs')}, "
           f"pin_rho={args.pin_rho}")
     t0 = time.time()
     for gen in range(args.generations):
@@ -488,6 +484,10 @@ def build_argparser():
     p.add_argument("--load", type=str, default=None, help="params pkl to load")
     p.add_argument("--out", type=str, default=str(HERE / "params_pci.pkl"))
     p.add_argument("--out-plot", type=str, default="pci_eval.png")
+    # pool sizes (override the central corticothalamic config, e.g. to match noSCnoSTN's
+    # thalamus t_exc=10/t_inh=5 so the full loop ports over)
+    p.add_argument("--n-t-exc", type=int, default=None)
+    p.add_argument("--n-t-inh", type=int, default=None)
     # trial / task geometry
     p.add_argument("--T", type=int, default=500)
     p.add_argument("--window", type=int, default=150, help="pre/post window length")
@@ -511,10 +511,6 @@ def build_argparser():
     p.add_argument("--pin-rho", type=float, default=None,
                    help="renormalize the loop to this rho_lin every generation "
                         "(restoring force against the ES rho drift; off if unset)")
-    p.add_argument("--weight-mode", choices=["dale_abs", "signed"], default="dale_abs",
-                   help="dale_abs: exc=|w| (default, but its convexity biases rho up "
-                        "under symmetric ES noise). signed: exc=w linear (bias-free; "
-                        "near-zero synapses may flip sign).")
     p.add_argument("--stim-trials", type=int, default=16)
     p.add_argument("--catch-trials", type=int, default=16)
     p.add_argument("--val-trials", type=int, default=40,

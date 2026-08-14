@@ -47,31 +47,38 @@ def init_params(rng_key, n_input):
     in_scale = _rt["in_scale"]
     out_scale = _rt["out_scale"]
     k = jr.split(rng_key, 24)
+
+    def _ln(key, shape):
+        # log-normally distributed synaptic MAGNITUDE (underlying N(0,1)); the Dale sign
+        # is applied by the +/- prefactor below. exc blocks -> +, inh blocks -> -.
+        return jnp.exp(jr.normal(key, shape))
+
     params = {
-        # --- cortex recurrence (Dale) ---
-        "J_cU": (g / math.sqrt(nU)) * jr.normal(k[0], (nU, nU)),   # cU->cU exc
-        "J_cL": (g / math.sqrt(nL)) * jr.normal(k[1], (nL, nL)),   # cL->cL exc
-        "B_cU_cL": (g / math.sqrt(nU)) * jr.normal(k[2], (nL, nU)),  # cU->cL exc
-        "B_cL_cU": (g / math.sqrt(nL)) * jr.normal(k[3], (nU, nL)),  # cL->cU exc
-        "J_cU_ci": (g / nU) * jr.normal(k[4], (nI, nU)),          # cU->cI exc
-        "J_cL_ci": (g / nL) * jr.normal(k[5], (nI, nL)),          # cL->cI exc
-        "J_ci_cU": (g / nI) * jr.normal(k[6], (nU, nI)),          # cI->cU inh
-        "J_ci_cL": (g / nI) * jr.normal(k[7], (nL, nI)),          # cI->cL inh
-        "J_c_ii": (g / nI) * jr.normal(k[8], (nI, nI)),           # cI->cI inh
+        # --- cortex recurrence (Dale): exc = +, inh = - (signs match the forward's
+        # exc/inh clip; magnitudes log-normal) ---
+        "J_cU": (g / math.sqrt(nU)) * _ln(k[0], (nU, nU)),   # cU->cU exc
+        "J_cL": (g / math.sqrt(nL)) * _ln(k[1], (nL, nL)),   # cL->cL exc
+        "B_cU_cL": (g / math.sqrt(nU)) * _ln(k[2], (nL, nU)),  # cU->cL exc
+        "B_cL_cU": (g / math.sqrt(nL)) * _ln(k[3], (nU, nL)),  # cL->cU exc
+        "J_cU_ci": (g / nU) * _ln(k[4], (nI, nU)),          # cU->cI exc
+        "J_cL_ci": (g / nL) * _ln(k[5], (nI, nL)),          # cL->cI exc
+        "J_ci_cU": -(g / nI) * _ln(k[6], (nU, nI)),          # cI->cU inh
+        "J_ci_cL": -(g / nI) * _ln(k[7], (nL, nI)),          # cI->cL inh
+        "J_c_ii": -(g / nI) * _ln(k[8], (nI, nI)),           # cI->cI inh
         # --- thalamus recurrence (Dale) ---
-        "J_t_ee": (g / math.sqrt(nTe)) * jr.normal(k[9], (nTe, nTe)),  # t_exc->t_exc exc
-        "J_t_ei": (g / nTi) * jr.normal(k[10], (nTe, nTi)),       # t_inh->t_exc inh
-        "J_t_ie": (g / nTe) * jr.normal(k[11], (nTi, nTe)),       # t_exc->t_inh exc
-        "J_t_ii": (g / nTi) * jr.normal(k[12], (nTi, nTi)),       # t_inh->t_inh inh
+        "J_t_ee": (g / math.sqrt(nTe)) * _ln(k[9], (nTe, nTe)),  # t_exc->t_exc exc
+        "J_t_ei": -(g / nTi) * _ln(k[10], (nTe, nTi)),       # t_inh->t_exc inh
+        "J_t_ie": (g / nTe) * _ln(k[11], (nTi, nTe)),       # t_exc->t_inh exc
+        "J_t_ii": -(g / nTi) * _ln(k[12], (nTi, nTi)),       # t_inh->t_inh inh
         # --- cross-area (Dale) ---
-        "B_t_cU": (g / nTe) * jr.normal(k[13], (nU, nTe)),        # t_exc->cU exc
-        "B_t_c_inh": (g / nTe) * jr.normal(k[14], (nI, nTe)),        # t_exc->cI exc (ffwd inh)
-        "B_cU_t_exc": (g / nU) * jr.normal(k[15], (nTe, nU)),     # cU->t_exc exc
-        "B_cU_t_inh": (g / nU) * jr.normal(k[16], (nTi, nU)),     # cU->t_inh exc
-        # --- external drives (free sign) ---
-        "B_cue_cU": in_scale * jr.normal(k[17], (nU, n_input)),
-        "B_cue_cL": in_scale * jr.normal(k[18], (nL, n_input)),
-        "w_out_t": out_scale * jr.normal(k[19], (n_output, nTe)),
+        "B_t_cU": (g / nTe) * _ln(k[13], (nU, nTe)),        # t_exc->cU exc
+        "B_t_c_inh": (g / nTe) * _ln(k[14], (nI, nTe)),     # t_exc->cI EXC (drives ffwd inhib); forward applies _exc
+        "B_cU_t_exc": (g / nU) * _ln(k[15], (nTe, nU)),     # cU->t_exc exc
+        "B_cU_t_inh": (g / nU) * _ln(k[16], (nTi, nU)),     # cU->t_inh exc
+        # --- external drives (constrained positive): log-normal magnitude ---
+        "B_cue_cU": in_scale * _ln(k[17], (nU, n_input)),
+        "B_cue_cL": in_scale * _ln(k[18], (nL, n_input)),
+        "w_out_t": out_scale * _ln(k[19], (n_output, nTe)),
         # --- biases ---
         "b_cU": jnp.zeros((nU,)), "b_cL": jnp.zeros((nL,)), "b_cI": jnp.zeros((nI,)),
         "b_t_exc": jnp.zeros((nTe,)), "b_t_inh": jnp.zeros((nTi,)),
@@ -125,17 +132,13 @@ def corticothalamic_rnn(params, config, inputs, opto_stimulation=None, rng_key=N
     j_t_ei = _inh(params["J_t_ei"]);  j_t_ie = _exc(params["J_t_ie"])
     b_t_cU = _exc(params["B_t_cU"]);  b_t_c_inh = _exc(params["B_t_c_inh"])
     b_cU_t_exc = _exc(params["B_cU_t_exc"]);  b_cU_t_inh = _exc(params["B_cU_t_inh"])
-    b_cue_cU = params["B_cue_cU"];  b_cue_cL = params["B_cue_cL"]   # free-sign external
-    w_out_t = params["w_out_t"]
+    b_cue_cU = _exc(params["B_cue_cU"]);  b_cue_cL = _exc(params["B_cue_cL"])  # excitatory (constrained +)
+    w_out_t = _exc(params["w_out_t"])
     b_cU_b, b_cL_b, b_cI_b = params["b_cU"], params["b_cL"], params["b_cI"]
     b_te_b, b_ti_b, b_out = params["b_t_exc"], params["b_t_inh"], params["b_out"]
 
     tau_c = config["tau_ctx"]; tau_t = config["tau_t"]
     noise_std = config.get("noise_std", 0.0)
-    # Per-synapse nonlinearity: "none" sums synaptic currents linearly (default);
-    # "tanh" wraps EACH synaptic term in tanh() before summing (saturating synapses).
-    _syn_mode = config.get("syn_nln", "none")
-    syn = (lambda z: jnp.tanh(z)) if _syn_mode == "tanh" else (lambda z: z)
 
     n_steps = inputs.shape[0]
     n_ctx = nU + nL + nI; n_t = nTe + nTi
@@ -163,21 +166,21 @@ def corticothalamic_rnn(params, config, inputs, opto_stimulation=None, rng_key=N
         s_cU, s_cL, s_cI = stim_t[:nU], stim_t[nU:nU + nL], stim_t[nU + nL:n_ctx]
         s_te, s_ti = stim_t[n_ctx:n_ctx + nTe], stim_t[n_ctx + nTe:]
 
-        # cortex (snapshot recurrent drives before overwriting). syn() = identity
-        # ("none") or tanh() per-term ("tanh").
-        cU_rec = syn(j_cU @ cU) + syn(b_cL_cU @ cL) + syn(j_ci_cU @ cI)
-        cL_rec = syn(j_cL @ cL) + syn(b_cU_cL @ cU) + syn(j_ci_cL @ cI)
-        cI_rec = syn(j_cU_ci @ cU) + syn(j_cL_ci @ cL) + syn(j_c_ii @ cI)
+        # cortex (snapshot recurrent drives before overwriting). Synaptic currents are
+        # summed linearly (no per-term nonlinearity), matching the other families.
+        cU_rec = j_cU @ cU + b_cL_cU @ cL + j_ci_cU @ cI
+        cL_rec = j_cL @ cL + b_cU_cL @ cU + j_ci_cL @ cI
+        cI_rec = j_cU_ci @ cU + j_cL_ci @ cL + j_c_ii @ cI
 
-        cU_n = nln((1.0 - 1.0 / tau_c) * cU + (1.0 / tau_c) * (cU_rec + syn(b_t_cU @ te) + syn(b_cue_cU @ u_t) + b_cU_b + s_cU))
-        cL_n = nln((1.0 - 1.0 / tau_c) * cL + (1.0 / tau_c) * (cL_rec + syn(b_cue_cL @ u_t) + b_cL_b + s_cL))
-        cI_n = nln((1.0 - 1.0 / tau_c) * cI + (1.0 / tau_c) * (cI_rec + syn(b_t_c_inh @ te) + b_cI_b + s_cI))
+        cU_n = nln((1.0 - 1.0 / tau_c) * cU + (1.0 / tau_c) * (cU_rec + b_t_cU @ te + b_cue_cU @ u_t + b_cU_b + s_cU))
+        cL_n = nln((1.0 - 1.0 / tau_c) * cL + (1.0 / tau_c) * (cL_rec + b_cue_cL @ u_t + b_cL_b + s_cL))
+        cI_n = nln((1.0 - 1.0 / tau_c) * cI + (1.0 / tau_c) * (cI_rec + b_t_c_inh @ te + b_cI_b + s_cI))
 
         # thalamus
-        te_rec = syn(j_t_ee @ te) + syn(j_t_ei @ ti)
-        ti_rec = syn(j_t_ie @ te) + syn(j_t_ii @ ti)
-        te_n = nln((1.0 - 1.0 / tau_t) * te + (1.0 / tau_t) * (te_rec + syn(b_cU_t_exc @ cU) + b_te_b + s_te))
-        ti_n = nln((1.0 - 1.0 / tau_t) * ti + (1.0 / tau_t) * (ti_rec + syn(b_cU_t_inh @ cU) + b_ti_b + s_ti))
+        te_rec = j_t_ee @ te + j_t_ei @ ti
+        ti_rec = j_t_ie @ te + j_t_ii @ ti
+        te_n = nln((1.0 - 1.0 / tau_t) * te + (1.0 / tau_t) * (te_rec + b_cU_t_exc @ cU + b_te_b + s_te))
+        ti_n = nln((1.0 - 1.0 / tau_t) * ti + (1.0 / tau_t) * (ti_rec + b_cU_t_inh @ cU + b_ti_b + s_ti))
 
         y_t = nln(w_out_t @ te_n + b_out)
         x_ctx_n = jnp.concatenate([cU_n, cL_n, cI_n])

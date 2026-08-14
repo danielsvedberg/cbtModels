@@ -116,74 +116,83 @@ def init_params(rng_key, n_input):
     #    (~0.8*g_bg), so the cortex decays to silence and the whole loop starves.
     #  - Pacemaker vectors (P_snc/P_snr/P_gpe) are per-unit biases, not fan-in
     #    sums, so they keep 1/sqrt(n).
+
+    def _ln(key, shape):
+        # log-normal synaptic MAGNITUDE (underlying N(0,1)); Dale sign applied by the
+        # +/- prefactor per block (matches corticothalamic). exc -> +w, inh -> -w, so
+        # under the clip-based exc/inh (stmt.exc=relu, stmt.inh=min0) no weight is
+        # zeroed at init (all already the correct sign), unlike symmetric jr.normal.
+        return jnp.exp(jr.normal(key, shape))
+
     params = {
         # Cortex split into two excitatory PT-like populations — cU (upper) and
         # cL (lower) — plus a shared inhibitory pool c_inh (Economo et al. 2018,
         # see README). Within-population excitatory recurrence:
-        "J_cU": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[2],  (n_c_U, n_c_U)),
-        "J_cL": (g_bg / math.sqrt(n_c_L)) * jr.normal(skeys[52], (n_c_L, n_c_L)),
+        "J_cU": (g_bg / math.sqrt(n_c_U)) * _ln(skeys[2],  (n_c_U, n_c_U)),   # exc
+        "J_cL": (g_bg / math.sqrt(n_c_L)) * _ln(skeys[52], (n_c_L, n_c_L)),   # exc
         # Reciprocal excitatory cU <-> cL (post, pre).
-        "B_cU_cL": (g_bg / math.sqrt(n_c_U)) * jr.normal(skeys[53], (n_c_L, n_c_U)),  # cU -> cL
-        "B_cL_cU": (g_bg / math.sqrt(n_c_L)) * jr.normal(skeys[54], (n_c_U, n_c_L)),  # cL -> cU
+        "B_cU_cL": (g_bg / math.sqrt(n_c_U)) * _ln(skeys[53], (n_c_L, n_c_U)),  # cU -> cL exc
+        "B_cL_cU": (g_bg / math.sqrt(n_c_L)) * _ln(skeys[54], (n_c_U, n_c_L)),  # cL -> cU exc
         # cU / cL -> c_inh (excitatory); c_inh -> cU / cL and c_inh -> c_inh (inhibitory).
-        "J_cU_ci": (g_bg / (n_c_U)) * jr.normal(skeys[43], (n_c_inh, n_c_U)),
-        "J_cL_ci": (g_bg / (n_c_L)) * jr.normal(skeys[56], (n_c_inh, n_c_L)),
-        "J_ci_cU": (g_bg / (n_c_inh)) * jr.normal(skeys[42], (n_c_U, n_c_inh)),
-        "J_ci_cL": (g_bg / (n_c_inh)) * jr.normal(skeys[55], (n_c_L, n_c_inh)),
-        "J_c_ii": (g_bg / (n_c_inh)) * jr.normal(skeys[44], (n_c_inh, n_c_inh)),
-        "J_d1": (g_bg / (n_d1)) * jr.normal(skeys[0], (n_d1, n_d1)),
-        "J_d2": (g_bg / (n_d2)) * jr.normal(skeys[8], (n_d2, n_d2)),
+        "J_cU_ci": (g_bg / (n_c_U)) * _ln(skeys[43], (n_c_inh, n_c_U)),        # exc
+        "J_cL_ci": (g_bg / (n_c_L)) * _ln(skeys[56], (n_c_inh, n_c_L)),        # exc
+        "J_ci_cU": -(g_bg / (n_c_inh)) * _ln(skeys[42], (n_c_U, n_c_inh)),     # inh
+        "J_ci_cL": -(g_bg / (n_c_inh)) * _ln(skeys[55], (n_c_L, n_c_inh)),     # inh
+        "J_c_ii": -(g_bg / (n_c_inh)) * _ln(skeys[44], (n_c_inh, n_c_inh)),    # inh
+        "J_d1": -(g_bg / (n_d1)) * _ln(skeys[0], (n_d1, n_d1)),               # inh
+        "J_d2": -(g_bg / (n_d2)) * _ln(skeys[8], (n_d2, n_d2)),               # inh
         # Pacemaker vectors (no within-area recurrence for SNc/SNr).
-        "P_snc": (g_nm / math.sqrt(n_snc)) * jr.normal(skeys[7], (n_snc,)),
-        "J_gpe": (g_bg / (n_gpe)) * jr.normal(skeys[19], (n_gpe, n_gpe)),
-        "P_snr": (g_bg / math.sqrt(n_snr)) * jr.normal(skeys[18], (n_snr,)),
-        "P_gpe": (g_bg / math.sqrt(n_gpe)) * jr.normal(skeys[34], (n_gpe,)),
+        "P_snc": (g_nm / math.sqrt(n_snc)) * _ln(skeys[7], (n_snc,)),         # exc
+        "J_gpe": -(g_bg / (n_gpe)) * _ln(skeys[19], (n_gpe, n_gpe)),          # inh
+        "P_snr": (g_bg / math.sqrt(n_snr)) * _ln(skeys[18], (n_snr,)),        # exc
+        "P_gpe": (g_bg / math.sqrt(n_gpe)) * _ln(skeys[34], (n_gpe,)),        # exc
         # Thalamus E/I recurrence.
-        "J_t_ee": (g_bg / math.sqrt(n_t_exc)) * jr.normal(skeys[5],  (n_t_exc, n_t_exc)),
-        "J_t_ei": (g_bg / (n_t_inh)) * jr.normal(skeys[45], (n_t_exc, n_t_inh)),
-        "J_t_ie": (g_bg / (n_t_exc)) * jr.normal(skeys[46], (n_t_inh, n_t_exc)),
-        "J_t_ii": (g_bg / (n_t_inh)) * jr.normal(skeys[47], (n_t_inh, n_t_inh)),
-        # Cue → cortex (all three pools receive).
-        "B_cue_cU": (1 / (n_input)) * jr.normal(skeys[3],  (n_c_U, n_input)),
-        "B_cue_cL": (1 / (n_input)) * jr.normal(skeys[57], (n_c_L, n_input)),
-        "B_cue_c_inh": (1 / (n_input)) * jr.normal(skeys[48], (n_c_inh, n_input)),
-        # Thalamus exc → cortex: reciprocal with cU; feedforward inhibition to c_inh.
-        "B_t_cU": (g_bg / (n_t_exc)) * jr.normal(skeys[4],  (n_c_U, n_t_exc)),
-        "B_t_c_inh": (g_bg / (n_t_exc)) * jr.normal(skeys[49], (n_c_inh, n_t_exc)),
-        # cU → thalamus (both thalamic pools receive).
-        "B_cU_t_exc": (1 / (n_c_U)) * jr.normal(skeys[29], (n_t_exc, n_c_U)),
-        "B_cU_t_inh": (1 / (n_c_U)) * jr.normal(skeys[50], (n_t_inh, n_c_U)),
-        # cU → striatum / GPe (basal-ganglia-projecting upper population).
-        "B_cU_d1": (g_bg / (n_c_U)) * jr.normal(skeys[1], (n_d1, n_c_U)),
-        "B_cU_d2": (g_bg / (n_c_U)) * jr.normal(skeys[12], (n_d2, n_c_U)),
-        "B_cU_gpe": (g_bg / (n_c_U)) * jr.normal(skeys[58], (n_gpe, n_c_U)),
-        # cL → SNc (descending lower population; also → medulla E units below).
-        "B_cL_snc": (1 / (n_c_L)) * jr.normal(skeys[32], (n_snc, n_c_L)),
-        "B_d1_snc": (1 / (n_d1)) * jr.normal(skeys[17], (n_snc, n_d1)),
-        "B_d2_snc": (1 / (n_d2)) * jr.normal(skeys[28], (n_snc, n_d2)),
-        "B_d1_snr": (1 / (n_d1)) * jr.normal(skeys[22], (n_snr, n_d1)),
-        "B_d2_gpe": (1 / (n_d2)) * jr.normal(skeys[24], (n_gpe, n_d2)),
-        "B_gpe_snr": (1 / (n_gpe)) * jr.normal(skeys[40], (n_snr, n_gpe)),  # GPe → SNr (inh)
-        "B_gpe_snc": (1 / (n_gpe)) * jr.normal(skeys[33], (n_snc, n_gpe)),  # GPe → SNc (inh)
-        # SNr → thalamus (both pools receive).
-        "B_snr_t_exc": (1 / (n_snr)) * jr.normal(skeys[6],  (n_t_exc, n_snr)),
-        "B_snr_t_inh": (1 / (n_snr)) * jr.normal(skeys[51], (n_t_inh, n_snr)),
+        "J_t_ee": (g_bg / math.sqrt(n_t_exc)) * _ln(skeys[5],  (n_t_exc, n_t_exc)),  # exc
+        "J_t_ei": -(g_bg / (n_t_inh)) * _ln(skeys[45], (n_t_exc, n_t_inh)),   # inh
+        "J_t_ie": (g_bg / (n_t_exc)) * _ln(skeys[46], (n_t_inh, n_t_exc)),    # exc
+        "J_t_ii": -(g_bg / (n_t_inh)) * _ln(skeys[47], (n_t_inh, n_t_inh)),   # inh
+        # Cue → cortex (all three pools receive) -- excitatory.
+        "B_cue_cU": (1 / (n_input)) * _ln(skeys[3],  (n_c_U, n_input)),
+        "B_cue_cL": (1 / (n_input)) * _ln(skeys[57], (n_c_L, n_input)),
+        "B_cue_c_inh": (1 / (n_input)) * _ln(skeys[48], (n_c_inh, n_input)),
+        # Thalamus exc → cortex: reciprocal with cU; feedforward inhibition to c_inh (exc synapse).
+        "B_t_cU": (g_bg / (n_t_exc)) * _ln(skeys[4],  (n_c_U, n_t_exc)),
+        "B_t_c_inh": (g_bg / (n_t_exc)) * _ln(skeys[49], (n_c_inh, n_t_exc)),
+        # cU → thalamus (both thalamic pools receive) -- excitatory.
+        "B_cU_t_exc": (1 / (n_c_U)) * _ln(skeys[29], (n_t_exc, n_c_U)),
+        "B_cU_t_inh": (1 / (n_c_U)) * _ln(skeys[50], (n_t_inh, n_c_U)),
+        # cU → striatum / GPe (basal-ganglia-projecting upper population) -- excitatory.
+        "B_cU_d1": (g_bg / (n_c_U)) * _ln(skeys[1], (n_d1, n_c_U)),
+        "B_cU_d2": (g_bg / (n_c_U)) * _ln(skeys[12], (n_d2, n_c_U)),
+        "B_cU_gpe": (g_bg / (n_c_U)) * _ln(skeys[58], (n_gpe, n_c_U)),
+        # cL → SNc (descending lower population; also → medulla E units below) -- excitatory.
+        "B_cL_snc": (1 / (n_c_L)) * _ln(skeys[32], (n_snc, n_c_L)),
+        "B_d1_snc": -(1 / (n_d1)) * _ln(skeys[17], (n_snc, n_d1)),   # D1 -> SNc inh
+        "B_d2_snc": -(1 / (n_d2)) * _ln(skeys[28], (n_snc, n_d2)),   # D2 -> SNc inh
+        "B_d1_snr": -(1 / (n_d1)) * _ln(skeys[22], (n_snr, n_d1)),   # D1 -> SNr inh
+        "B_d2_gpe": -(1 / (n_d2)) * _ln(skeys[24], (n_gpe, n_d2)),   # D2 -> GPe inh
+        "B_gpe_snr": -(1 / (n_gpe)) * _ln(skeys[40], (n_snr, n_gpe)),  # GPe → SNr inh
+        "B_gpe_snc": -(1 / (n_gpe)) * _ln(skeys[33], (n_snc, n_gpe)),  # GPe → SNc inh
+        # SNr → thalamus (both pools receive) -- inhibitory.
+        "B_snr_t_exc": -(1 / (n_snr)) * _ln(skeys[6],  (n_t_exc, n_snr)),
+        "B_snr_t_inh": -(1 / (n_snr)) * _ln(skeys[51], (n_t_inh, n_snr)),
         # Dopamine→PKA gains: per-neuron (n_d, n_snc) so each striatal neuron
-        # has its own dopamine sensitivity (no shared population PKA).
-        "m_d1": (1 / (n_snc)) * jr.normal(skeys[10], (n_d1,)),
-        "m_d2": (1 / (n_snc)) * jr.normal(skeys[11], (n_d2,)),
+        # has its own dopamine sensitivity (no shared population PKA) -- excitatory.
+        "m_d1": (1 / (n_snc)) * _ln(skeys[10], (n_d1,)),
+        "m_d2": (1 / (n_snc)) * _ln(skeys[11], (n_d2,)),
 
         # Lateral inhibition between D1 and D2 populations.
-        "B_d1_d2": (g_bg / (n_d1)) * jr.normal(skeys[16], (n_d2, n_d1)),  # D1 → D2 (inh)
-        "B_d2_d1": (g_bg / (n_d2)) * jr.normal(skeys[31], (n_d1, n_d2)),  # D2 → D1 (inh)
+        "B_d1_d2": -(g_bg / (n_d1)) * _ln(skeys[16], (n_d2, n_d1)),  # D1 → D2 inh
+        "B_d2_d1": -(g_bg / (n_d2)) * _ln(skeys[31], (n_d1, n_d2)),  # D2 → D1 inh
         # Medullary area: two E/I pairs (E0,I0) and (E1,I1) coupled reciprocally.
-        # Each 2×2 block: col 0 = from E (exc), col 1 = from I (inh).
-        "J_med_w1": (g_bg / (2)) * jr.normal(skeys[13], (2, 2)),  # within pair 1
-        "J_med_w2": (g_bg / (2)) * jr.normal(skeys[21], (2, 2)),  # within pair 2
-        "J_med_x":  (g_bg / (2)) * jr.normal(skeys[30], (2, 2)),  # cross-pair
-        "B_cL_med": (1 / (n_c_L)) * jr.normal(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E units only
-        "B_snr_med": (1 / (n_snr)) * jr.normal(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E units (inh)
-        "C_med": (1 / (n_med // 2)) * jr.normal(skeys[15], (n_output, n_med // 2)),  # E units only
+        # Each 2×2 block: col 0 = from E (exc, +), col 1 = from I (inh, -). _med_block
+        # applies exc()/inh() per column, so the init must already carry those signs.
+        "J_med_w1": (g_bg / (2)) * _ln(skeys[13], (2, 2)) * jnp.array([1.0, -1.0]),  # within pair 1
+        "J_med_w2": (g_bg / (2)) * _ln(skeys[21], (2, 2)) * jnp.array([1.0, -1.0]),  # within pair 2
+        "J_med_x":  (g_bg / (2)) * _ln(skeys[30], (2, 2)) * jnp.array([1.0, -1.0]),  # cross-pair
+        "B_cL_med": (1 / (n_c_L)) * _ln(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E (exc)
+        "B_snr_med": -(1 / (n_snr)) * _ln(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E (inh)
+        "C_med": (1 / (n_med // 2)) * _ln(skeys[15], (n_output, n_med // 2)),  # readout (exc)
         #"rb": jnp.abs((1 / (n_med)) * jr.normal(skeys[16], (n_output,))),
         # Output readout gain/bias: y = sigmoid(out_gain*(c_med@x_med_E) + out_bias).
         # out_bias = logit(0.25) gives a nonzero resting response prob so the policy

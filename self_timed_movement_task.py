@@ -9,13 +9,10 @@ from jax.nn import tanh
 
 
 def exc(w):
-    #return jax.nn.sigmoid(w)
-    #return jnp.maximum(0, jnp.tanh(w))
-    return jnp.abs(w)
+    return jnp.clip(w, min=0.0)
+
 def inh(w):
-    return -exc(w)
-    #return -jnp.abs(w)
-    #return -jnp.maximum(0, w)
+    return jnp.clip(w, max=0.0)
 
 
 def nln(x):

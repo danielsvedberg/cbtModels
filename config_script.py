@@ -352,8 +352,8 @@ CORTICOTHALAMIC_RNN_CONFIG = {
     "n_c_U": 10,
     "n_c_L": 10,
     "n_c_inh": 10,
-    "n_t_exc": 20,
-    "n_t_inh": 10,
+    "n_t_exc": 10,   # homogenized to the CBT canonical (CBT_RNN_CONFIG)
+    "n_t_inh": 5,    # homogenized to the CBT canonical (CBT_RNN_CONFIG)
     "n_output": 1,
     "noise_std": 0.01,
     "g": 1.0,          # shared weight gain (fan-in-scaled)
