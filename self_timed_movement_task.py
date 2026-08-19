@@ -9,10 +9,12 @@ from jax.nn import tanh
 
 
 def exc(w):
-    return jnp.clip(w, min=0.0)
+    return jax.nn.sigmoid(w)
+    #jnp.clip(w, min=0.0)
 
 def inh(w):
-    return jnp.clip(w, max=0.0)
+    return -jax.nn.sigmoid(w)
+    #jnp.clip(w, max=0.0)
 
 
 def nln(x):

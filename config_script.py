@@ -272,6 +272,12 @@ CBT_INIT_STATE = {
 # noSC has no k_a (it uses DA/adenosine concentration dynamics); noSCnoSTN has no
 # out_gain/out_bias (plain nln readout).
 CBT_WEIGHT_INIT = {
+    # Per-SPN DA-sensitivity gains (mean of the exponential init). Explicit scale so the
+    # gain does NOT depend on the SNc pool size (replaces the vestigial 1/n_snc fan-in
+    # scaling that dated from a per-connection (n_d, n_snc) design). 0.25 == old 1/n_snc
+    # at n_snc=4, preserving the current magnitude.
+    "m_d1": 0.25,          # D1R excitatory drive on D1 PKA (per-SPN gain)
+    "m_d2": 0.25,          # D2R inhibitory drive on D2 PKA (per-SPN gain)
     "m_a1": 0.05,          # A1R inhibitory drive on D1 PKA (per-SPN gain)
     "m_a2": 0.01,          # A2R excitatory drive on D2 PKA (per-SPN gain)
     "out_gain": 4.0,       # readout gain
@@ -336,9 +342,19 @@ _CBT_FAMILY_STRUCTURE = {
         "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
                           "pka_init_floor": 0.4, "pka_init_cap": 0.6,
                           "tau_da": 20.0, "tau_ado": 200.0,
-                          "da_release": 1.0, "ado_release": 1.0,
-                          "da_max": 1.0, "ado_max": 1.0},
-        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5, "x_da0": 0.1, "x_ado0": 0.1},
+                          "da_release": 0.5, "ado_release": 0.5,
+                          "da_max": 1.0, "ado_max": 1.0,
+                          # de-saturate D1: base da_pka_gain=4.0 drove pkaD1 to 0.77 (D1
+                          # pinned ~0.99, no dynamic range under the clip/exp init). 1.0
+                          # rests pkaD1 ~0.5 (design target) with D1 headroom to gate.
+                          "da_pka_gain": 1.0},
+        # PKA starts at 0.3 (the in-band bg_nln operating point), not 0.5: with the
+        # de-saturated loop, pka=0.5 sits in the SATURATING bg_nln regime (D1/D2->~0.95)
+        # and, because pka rises fast but falls slowly (tau_pka_fall>>rise), lingers there
+        # as a mid-trial spike. Starting at 0.3 (below the production level) lets pka rise
+        # into band with no saturated transient; each config then settles into its opponent
+        # attractor (low m_a2 -> D1 branch). See tests/init_state_fix/.
+        "extra_init": {"pka_d10": 0.3, "pka_d20": 0.3, "x_da0": 0.1, "x_ado0": 0.1},
         "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
     },
 }

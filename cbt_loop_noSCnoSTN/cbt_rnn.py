@@ -85,6 +85,7 @@ def init_params(rng_key, n_input):
     _rc = _rootcfg.rnn_config_for(_FAMILY)
     _is = _rootcfg.init_state_for(_FAMILY)
     _wi = _rootcfg.weight_init_for(_FAMILY)
+    _rt = _rootcfg.runtime_config_for(_FAMILY)   # for the DA/adenosine release-gain inits
     n_c_U = _rc["n_c_U"]
     n_c_L = _rc["n_c_L"]
     n_c_inh = _rc["n_c_inh"]
@@ -117,82 +118,86 @@ def init_params(rng_key, n_input):
     #  - Pacemaker vectors (P_snc/P_snr/P_gpe) are per-unit biases, not fan-in
     #    sums, so they keep 1/sqrt(n).
 
-    def _ln(key, shape):
-        # log-normal synaptic MAGNITUDE (underlying N(0,1)); Dale sign applied by the
-        # +/- prefactor per block (matches corticothalamic). exc -> +w, inh -> -w, so
-        # under the clip-based exc/inh (stmt.exc=relu, stmt.inh=min0) no weight is
-        # zeroed at init (all already the correct sign), unlike symmetric jr.normal.
-        return jnp.exp(jr.normal(key, shape))
+    def _mag(key, shape):
+        # exponential synaptic MAGNITUDE ~ Exp(1) (mean 1). Combined with each block's
+        # 1/fan_in prefactor this is Exp with mean 1/fan_in (rate = fan_in) -- the
+        # one-signed (Dale) analog of He init: a fan-in-n sum of positive weights against
+        # positive rates keeps its MEAN drive O(1) (same-signed terms don't cancel). Dale
+        # sign is applied by the +/- prefactor per block (exc +, inh -), so under the
+        # clip-based exc/inh nothing is zeroed at init.
+        return jr.exponential(key, shape)
 
     params = {
         # Cortex split into two excitatory PT-like populations — cU (upper) and
         # cL (lower) — plus a shared inhibitory pool c_inh (Economo et al. 2018,
         # see README). Within-population excitatory recurrence:
-        "J_cU": (g_bg / math.sqrt(n_c_U)) * _ln(skeys[2],  (n_c_U, n_c_U)),   # exc
-        "J_cL": (g_bg / math.sqrt(n_c_L)) * _ln(skeys[52], (n_c_L, n_c_L)),   # exc
+        "J_cU": (g_bg / math.sqrt(n_c_U)) * _mag(skeys[2],  (n_c_U, n_c_U)),   # exc
+        "J_cL": (g_bg / math.sqrt(n_c_L)) * _mag(skeys[52], (n_c_L, n_c_L)),   # exc
         # Reciprocal excitatory cU <-> cL (post, pre).
-        "B_cU_cL": (g_bg / math.sqrt(n_c_U)) * _ln(skeys[53], (n_c_L, n_c_U)),  # cU -> cL exc
-        "B_cL_cU": (g_bg / math.sqrt(n_c_L)) * _ln(skeys[54], (n_c_U, n_c_L)),  # cL -> cU exc
+        "B_cU_cL": (g_bg / math.sqrt(n_c_U)) * _mag(skeys[53], (n_c_L, n_c_U)),  # cU -> cL exc
+        "B_cL_cU": (g_bg / math.sqrt(n_c_L)) * _mag(skeys[54], (n_c_U, n_c_L)),  # cL -> cU exc
         # cU / cL -> c_inh (excitatory); c_inh -> cU / cL and c_inh -> c_inh (inhibitory).
-        "J_cU_ci": (g_bg / (n_c_U)) * _ln(skeys[43], (n_c_inh, n_c_U)),        # exc
-        "J_cL_ci": (g_bg / (n_c_L)) * _ln(skeys[56], (n_c_inh, n_c_L)),        # exc
-        "J_ci_cU": -(g_bg / (n_c_inh)) * _ln(skeys[42], (n_c_U, n_c_inh)),     # inh
-        "J_ci_cL": -(g_bg / (n_c_inh)) * _ln(skeys[55], (n_c_L, n_c_inh)),     # inh
-        "J_c_ii": -(g_bg / (n_c_inh)) * _ln(skeys[44], (n_c_inh, n_c_inh)),    # inh
-        "J_d1": -(g_bg / (n_d1)) * _ln(skeys[0], (n_d1, n_d1)),               # inh
-        "J_d2": -(g_bg / (n_d2)) * _ln(skeys[8], (n_d2, n_d2)),               # inh
+        "J_cU_ci": (g_bg / (n_c_U)) * _mag(skeys[43], (n_c_inh, n_c_U)),        # exc
+        "J_cL_ci": (g_bg / (n_c_L)) * _mag(skeys[56], (n_c_inh, n_c_L)),        # exc
+        "J_ci_cU": (g_bg / (n_c_inh)) * _mag(skeys[42], (n_c_U, n_c_inh)),     # inh
+        "J_ci_cL": (g_bg / (n_c_inh)) * _mag(skeys[55], (n_c_L, n_c_inh)),     # inh
+        "J_c_ii": (g_bg / (n_c_inh)) * _mag(skeys[44], (n_c_inh, n_c_inh)),    # inh
+        "J_d1": (g_bg / (n_d1)) * _mag(skeys[0], (n_d1, n_d1)),               # inh
+        "J_d2": (g_bg / (n_d2)) * _mag(skeys[8], (n_d2, n_d2)),               # inh
         # Pacemaker vectors (no within-area recurrence for SNc/SNr).
-        "P_snc": (g_nm / math.sqrt(n_snc)) * _ln(skeys[7], (n_snc,)),         # exc
-        "J_gpe": -(g_bg / (n_gpe)) * _ln(skeys[19], (n_gpe, n_gpe)),          # inh
-        "P_snr": (g_bg / math.sqrt(n_snr)) * _ln(skeys[18], (n_snr,)),        # exc
-        "P_gpe": (g_bg / math.sqrt(n_gpe)) * _ln(skeys[34], (n_gpe,)),        # exc
+        "P_snc": (g_nm / math.sqrt(n_snc)) * _mag(skeys[7], (n_snc,)),         # exc
+        "J_gpe": (g_bg / (n_gpe)) * _mag(skeys[19], (n_gpe, n_gpe)),          # inh
+        "P_snr": (g_bg / math.sqrt(n_snr)) * _mag(skeys[18], (n_snr,)),        # exc
+        "P_gpe": (g_bg / math.sqrt(n_gpe)) * _mag(skeys[34], (n_gpe,)),        # exc
         # Thalamus E/I recurrence.
-        "J_t_ee": (g_bg / math.sqrt(n_t_exc)) * _ln(skeys[5],  (n_t_exc, n_t_exc)),  # exc
-        "J_t_ei": -(g_bg / (n_t_inh)) * _ln(skeys[45], (n_t_exc, n_t_inh)),   # inh
-        "J_t_ie": (g_bg / (n_t_exc)) * _ln(skeys[46], (n_t_inh, n_t_exc)),    # exc
-        "J_t_ii": -(g_bg / (n_t_inh)) * _ln(skeys[47], (n_t_inh, n_t_inh)),   # inh
+        "J_t_ee": (g_bg / math.sqrt(n_t_exc)) * _mag(skeys[5],  (n_t_exc, n_t_exc)),  # exc
+        "J_t_ei": (g_bg / (n_t_inh)) * _mag(skeys[45], (n_t_exc, n_t_inh)),   # inh
+        "J_t_ie": (g_bg / (n_t_exc)) * _mag(skeys[46], (n_t_inh, n_t_exc)),    # exc
+        "J_t_ii": (g_bg / (n_t_inh)) * _mag(skeys[47], (n_t_inh, n_t_inh)),   # inh
         # Cue → cortex (all three pools receive) -- excitatory.
-        "B_cue_cU": (1 / (n_input)) * _ln(skeys[3],  (n_c_U, n_input)),
-        "B_cue_cL": (1 / (n_input)) * _ln(skeys[57], (n_c_L, n_input)),
-        "B_cue_c_inh": (1 / (n_input)) * _ln(skeys[48], (n_c_inh, n_input)),
+        "B_cue_cU": (1 / (n_input)) * _mag(skeys[3],  (n_c_U, n_input)),
+        "B_cue_cL": (1 / (n_input)) * _mag(skeys[57], (n_c_L, n_input)),
+        "B_cue_c_inh": (1 / (n_input)) * _mag(skeys[48], (n_c_inh, n_input)),
         # Thalamus exc → cortex: reciprocal with cU; feedforward inhibition to c_inh (exc synapse).
-        "B_t_cU": (g_bg / (n_t_exc)) * _ln(skeys[4],  (n_c_U, n_t_exc)),
-        "B_t_c_inh": (g_bg / (n_t_exc)) * _ln(skeys[49], (n_c_inh, n_t_exc)),
+        "B_t_cU": (g_bg / (n_t_exc)) * _mag(skeys[4],  (n_c_U, n_t_exc)),
+        "B_t_c_inh": (g_bg / (n_t_exc)) * _mag(skeys[49], (n_c_inh, n_t_exc)),
         # cU → thalamus (both thalamic pools receive) -- excitatory.
-        "B_cU_t_exc": (1 / (n_c_U)) * _ln(skeys[29], (n_t_exc, n_c_U)),
-        "B_cU_t_inh": (1 / (n_c_U)) * _ln(skeys[50], (n_t_inh, n_c_U)),
+        "B_cU_t_exc": (1 / (n_c_U)) * _mag(skeys[29], (n_t_exc, n_c_U)),
+        "B_cU_t_inh": (1 / (n_c_U)) * _mag(skeys[50], (n_t_inh, n_c_U)),
         # cU → striatum / GPe (basal-ganglia-projecting upper population) -- excitatory.
-        "B_cU_d1": (g_bg / (n_c_U)) * _ln(skeys[1], (n_d1, n_c_U)),
-        "B_cU_d2": (g_bg / (n_c_U)) * _ln(skeys[12], (n_d2, n_c_U)),
-        "B_cU_gpe": (g_bg / (n_c_U)) * _ln(skeys[58], (n_gpe, n_c_U)),
+        "B_cU_d1": (g_bg / (n_c_U)) * _mag(skeys[1], (n_d1, n_c_U)),
+        "B_cU_d2": (g_bg / (n_c_U)) * _mag(skeys[12], (n_d2, n_c_U)),
+        "B_cU_gpe": (g_bg / (n_c_U)) * _mag(skeys[58], (n_gpe, n_c_U)),
         # cL → SNc (descending lower population; also → medulla E units below) -- excitatory.
-        "B_cL_snc": (1 / (n_c_L)) * _ln(skeys[32], (n_snc, n_c_L)),
-        "B_d1_snc": -(1 / (n_d1)) * _ln(skeys[17], (n_snc, n_d1)),   # D1 -> SNc inh
-        "B_d2_snc": -(1 / (n_d2)) * _ln(skeys[28], (n_snc, n_d2)),   # D2 -> SNc inh
-        "B_d1_snr": -(1 / (n_d1)) * _ln(skeys[22], (n_snr, n_d1)),   # D1 -> SNr inh
-        "B_d2_gpe": -(1 / (n_d2)) * _ln(skeys[24], (n_gpe, n_d2)),   # D2 -> GPe inh
-        "B_gpe_snr": -(1 / (n_gpe)) * _ln(skeys[40], (n_snr, n_gpe)),  # GPe → SNr inh
-        "B_gpe_snc": -(1 / (n_gpe)) * _ln(skeys[33], (n_snc, n_gpe)),  # GPe → SNc inh
+        "B_cL_snc": (1 / (n_c_L)) * _mag(skeys[32], (n_snc, n_c_L)),
+        "B_d1_snc": (1 / (n_d1)) * _mag(skeys[17], (n_snc, n_d1)),   # D1 -> SNc inh
+        "B_d2_snc": (1 / (n_d2)) * _mag(skeys[28], (n_snc, n_d2)),   # D2 -> SNc inh
+        "B_d1_snr": (1 / (n_d1)) * _mag(skeys[22], (n_snr, n_d1)),   # D1 -> SNr inh
+        "B_d2_gpe": (1 / (n_d2)) * _mag(skeys[24], (n_gpe, n_d2)),   # D2 -> GPe inh
+        "B_gpe_snr": (1 / (n_gpe)) * _mag(skeys[40], (n_snr, n_gpe)),  # GPe → SNr inh
+        "B_gpe_snc": (1 / (n_gpe)) * _mag(skeys[33], (n_snc, n_gpe)),  # GPe → SNc inh
         # SNr → thalamus (both pools receive) -- inhibitory.
-        "B_snr_t_exc": -(1 / (n_snr)) * _ln(skeys[6],  (n_t_exc, n_snr)),
-        "B_snr_t_inh": -(1 / (n_snr)) * _ln(skeys[51], (n_t_inh, n_snr)),
-        # Dopamine→PKA gains: per-neuron (n_d, n_snc) so each striatal neuron
-        # has its own dopamine sensitivity (no shared population PKA) -- excitatory.
-        "m_d1": (1 / (n_snc)) * _ln(skeys[10], (n_d1,)),
-        "m_d2": (1 / (n_snc)) * _ln(skeys[11], (n_d2,)),
+        "B_snr_t_exc": (1 / (n_snr)) * _mag(skeys[6],  (n_t_exc, n_snr)),
+        "B_snr_t_inh": (1 / (n_snr)) * _mag(skeys[51], (n_t_inh, n_snr)),
+        # Dopamine→PKA gains: a SINGLE scalar per population (one trainable m_d1 shared by
+        # all D1 units, one m_d2 shared by all D2 units) -- a whole-population DA
+        # sensitivity to the broadcast scalar DA concentration (volume transmission). It
+        # broadcasts over the per-neuron pka_d1/pka_d2 states in prod_d1/prod_d2.
+        "m_d1": jnp.array(_wi["m_d1"]),
+        "m_d2": jnp.array(_wi["m_d2"]),
 
         # Lateral inhibition between D1 and D2 populations.
-        "B_d1_d2": -(g_bg / (n_d1)) * _ln(skeys[16], (n_d2, n_d1)),  # D1 → D2 inh
-        "B_d2_d1": -(g_bg / (n_d2)) * _ln(skeys[31], (n_d1, n_d2)),  # D2 → D1 inh
+        "B_d1_d2": (g_bg / (n_d1)) * _mag(skeys[16], (n_d2, n_d1)),  # D1 → D2 inh
+        "B_d2_d1": (g_bg / (n_d2)) * _mag(skeys[31], (n_d1, n_d2)),  # D2 → D1 inh
         # Medullary area: two E/I pairs (E0,I0) and (E1,I1) coupled reciprocally.
         # Each 2×2 block: col 0 = from E (exc, +), col 1 = from I (inh, -). _med_block
         # applies exc()/inh() per column, so the init must already carry those signs.
-        "J_med_w1": (g_bg / (2)) * _ln(skeys[13], (2, 2)) * jnp.array([1.0, -1.0]),  # within pair 1
-        "J_med_w2": (g_bg / (2)) * _ln(skeys[21], (2, 2)) * jnp.array([1.0, -1.0]),  # within pair 2
-        "J_med_x":  (g_bg / (2)) * _ln(skeys[30], (2, 2)) * jnp.array([1.0, -1.0]),  # cross-pair
-        "B_cL_med": (1 / (n_c_L)) * _ln(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E (exc)
-        "B_snr_med": -(1 / (n_snr)) * _ln(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E (inh)
-        "C_med": (1 / (n_med // 2)) * _ln(skeys[15], (n_output, n_med // 2)),  # readout (exc)
+        "J_med_w1": (g_bg / (2)) * _mag(skeys[13], (2, 2)) * jnp.array([1.0, -1.0]),  # within pair 1
+        "J_med_w2": (g_bg / (2)) * _mag(skeys[21], (2, 2)) * jnp.array([1.0, -1.0]),  # within pair 2
+        "J_med_x":  (g_bg / (2)) * _mag(skeys[30], (2, 2)) * jnp.array([1.0, -1.0]),  # cross-pair
+        "B_cL_med": (1 / (n_c_L)) * _mag(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E (exc)
+        "B_snr_med": (1 / (n_snr)) * _mag(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E (inh)
+        "C_med": (1 / (n_med // 2)) * _mag(skeys[15], (n_output, n_med // 2)),  # readout (exc)
         #"rb": jnp.abs((1 / (n_med)) * jr.normal(skeys[16], (n_output,))),
         # Output readout gain/bias: y = sigmoid(out_gain*(c_med@x_med_E) + out_bias).
         # out_bias = logit(0.25) gives a nonzero resting response prob so the policy
@@ -221,8 +226,16 @@ def init_params(rng_key, n_input):
         # dynamic state later) feeding per-SPN weights m_a1 / m_a2, mirroring
         # m_d1 / m_d2 for the broadcast DA gain.
         "k_a": jnp.array(_wi["k_a"]),
-        "m_a1": jnp.ones((n_d1,)) * _wi["m_a1"],  # A1R inhibitory drive on D1 PKA
-        "m_a2": jnp.ones((n_d2,)) * _wi["m_a2"],  # A2R excitatory drive on D2 PKA
+        # Single scalar A1R/A2R adenosine gains: one trainable m_a1 shared by all D1 units,
+        # one m_a2 by all D2 units (a whole-population adenosine sensitivity, mirroring the
+        # scalar m_d1/m_d2). Broadcasts over the per-neuron pka states.
+        "m_a1": jnp.array(_wi["m_a1"]),  # A1R inhibitory drive on D1 PKA
+        "m_a2": jnp.array(_wi["m_a2"]),  # A2R excitatory drive on D2 PKA
+        # Trainable DA / adenosine RELEASE gains (scalars, init from the runtime config;
+        # clipped >=0 in the forward). Set how much x_da / x_ado is produced per unit of
+        # SNc / striatal activity. Moved out of config so training can tune them.
+        "g_da_release": jnp.array(_rt["da_release"]),
+        "g_ado_release": jnp.array(_rt["ado_release"]),
     }
 
     # Biophysical runtime constants are declared centrally (config_script.
@@ -255,6 +268,26 @@ def init_params(rng_key, n_input):
         )
         print(f"[balanced_init] cortico-thalamic loop rho(M): {rho0:.3f} -> {rho1:.3f} "
               f"(target {balanced_target_rho}, tau={config['tau_c']})")
+
+    # Wrapper-aware magnitude init. exc/inh = +/-sigmoid(w) (mass-action, bounded (0,1)),
+    # so the EFFECTIVE weight is sigmoid(raw). Every block above (and normalize_loop) was
+    # built as an intended fan-in-scaled MAGNITUDE -- the value a linear clip/abs Dale would
+    # use directly. Under sigmoid a small raw (~0.05 from the 1/fan_in scaling) collapses to
+    # sigmoid~0.5, so ALL weights become ~0.5 -> dense over-excitation pins the whole loop at
+    # the top rail (cortex/thal ~0.99, D2->1.0) and defeats normalize_loop (which scales raw
+    # magnitudes that sigmoid then flattens). Invert the sigmoid so exc(raw) reproduces the
+    # intended magnitude: raw <- logit(|magnitude|). Sign is still supplied by exc/inh in the
+    # forward, so this touches connectivity matrices only (2-D; the scalar DA/adenosine/pacer
+    # gains are excluded). If exc is linear (clip/abs, exc(0)=0) the magnitudes are already the
+    # effective weights, so this is skipped. See tests/loop_desaturation/.
+    if float(stmt.exc(jnp.asarray(0.0))) > 0.25:
+        _gain_keys = {"m_d1", "m_d2", "m_a1", "m_a2", "g_da_release", "g_ado_release",
+                      "P_gpe", "P_snc", "P_snr"}
+        for _k in list(params):
+            _v = jnp.asarray(params[_k])
+            if _k not in _gain_keys and _v.ndim >= 2:
+                _m = jnp.clip(jnp.abs(_v), 1e-4, 1.0 - 1e-4)
+                params[_k] = jnp.log(_m / (1.0 - _m))
 
     return params, config
 
@@ -363,8 +396,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     m_d2 = exc(params["m_d2"]) #+ m_floor
     # Cap the A1R gain so training can't grow adenosine inhibition on D1 PKA past
     # the DA drive and collapse dSPN excitability. (Ported from cbt_loop.)
-    m_a1 = jnp.clip(exc(params["m_a1"]), 0.0, config["m_a1_cap"])
-    m_a2 = exc(params["m_a2"]) #+ m_floor_a2
+    m_a1 = exc(params["m_a1"])   # cap lifted: A1R gain free to train per-neuron
+    m_a2 = exc(params["m_a2"])
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
     b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition
@@ -410,6 +443,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # small, so the raw DA term barely registers against tonic adenosine; a gain
     # >1 lets phasic DA actually drive D1 PKA (and inhibit D2 PKA) within range.
     da_pka_gain = config["da_pka_gain"]
+    # Optional PKA pin: if set to a float (e.g. 0.5), pka_d1/pka_d2 are FORCED to that
+    # constant every step -- overriding the DA/adenosine dynamics -- so D1/D2 excitability
+    # is held fixed (bg_nln's b). None/absent => normal dynamics. Static config value, so
+    # the branch resolves at trace time (JAX-safe).
+    pin_pka_d1 = config.get("pin_pka_d1", None)
+    pin_pka_d2 = config.get("pin_pka_d2", None)
     # PKA saturation rule (ported from cbt_loop): mass-action-bounded pool fed
     # directly into bg_nln as excitability b (no per-step state squash).
     pka_saturation = config["pka_saturation"]
@@ -426,7 +465,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     k_a = k_a_floor + exc(jnp.asarray(params["k_a"])) * (k_a_cap - k_a_floor)  # (legacy; unused with dynamic DA/adenosine)
     # Dynamic DA / adenosine concentration model (mass-action), ported from noSC.
     tau_da = config["tau_da"]; tau_ado = config["tau_ado"]
-    da_release = config["da_release"]; ado_release = config["ado_release"]
+    g_da_release = exc(params["g_da_release"]); g_ado_release = exc(params["g_ado_release"])  # trainable, >=0
     da_max = config["da_max"]; ado_max = config["ado_max"]
 
     snc_pacer_max = config["snc_pacer_max"]
@@ -523,11 +562,13 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # SNc is broadcast as a single scalar to every SPN; each SPN scales it
         # by its own per-neuron gain m_d1[i] / m_d2[i].
         mean_snc = jnp.mean(x_snc)
-        # Mass-action DA / adenosine concentrations co-released by SNc; DA fast
+        mean_spn = jnp.mean(jnp.concatenate((x_d1, x_d2)))
+        # Mass-action DA / adenosine concentrations
         # (tau_da), adenosine slow (tau_ado). Substrate-throttled to saturate at *_max.
-        release = mean_snc
-        x_da  = x_da  + (1.0 / tau_da)  * (da_release  * release * jnp.maximum(1.0 - x_da / da_max, 0.0)  - x_da)
-        x_ado = x_ado + (1.0 / tau_ado) * (ado_release * release * jnp.maximum(1.0 - x_ado / ado_max, 0.0) - x_ado)
+        da_release = mean_snc
+        ado_release = mean_spn
+        x_da  = x_da  + (1.0 / tau_da)  * (g_da_release  * da_release * jnp.maximum(1.0 - x_da / da_max, 0.0)  - x_da)
+        x_ado = x_ado + (1.0 / tau_ado) * (g_ado_release * ado_release * jnp.maximum(1.0 - x_ado / ado_max, 0.0) - x_ado)
 
         # PKA dynamics (leaky saturating integrator):
         # exponential leak with tau_pka_fall, rectified DA-driven production
@@ -545,6 +586,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
             prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
         pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
         pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
+        # Optional pin: hold pka_d1/pka_d2 at a fixed value (overrides the dynamics above).
+        if pin_pka_d1 is not None:
+            pka_d1 = jnp.full_like(pka_d1, pin_pka_d1)
+        if pin_pka_d2 is not None:
+            pka_d2 = jnp.full_like(pka_d2, pin_pka_d2)
 
         # PKA is bounded to (0,1), so it IS bg_nln's excitability b directly (no
         # soft-threshold gate). Clip only insets off the (0,1) endpoints.

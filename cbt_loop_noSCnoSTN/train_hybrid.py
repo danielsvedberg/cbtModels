@@ -106,7 +106,7 @@ def _init_from_scratch(seed):
     return params, config
 
 
-def main(init="pavlovian", num_iters=None, silence_coef=None, objective=None):
+def main(init="scratch", num_iters=None, silence_coef=None, objective=None):
     train_cfg = cfg.TRAINING_CONFIG
     rl_cfg = dict(cfg.RL_CONFIG)
     if silence_coef is not None:
@@ -218,9 +218,9 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--init", choices=("pavlovian", "scratch"), default="pavlovian",
-                    help="pavlovian: start from params_pavlovian.pkl (curriculum, default). "
-                         "scratch: start from a fresh init_params, no bootstrap.")
+    ap.add_argument("--init", choices=("pavlovian", "scratch"), default="scratch",
+                    help="scratch: start from a fresh init_params, no bootstrap (default). "
+                         "pavlovian: start from params_pavlovian.pkl (curriculum).")
     ap.add_argument("--iters", type=int, default=None,
                     help="override TRAINING_CONFIG['num_iters'] for this run")
     ap.add_argument("--silence-coef", type=float, default=None,
