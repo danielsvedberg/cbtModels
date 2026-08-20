@@ -263,8 +263,8 @@ CBT_INIT_STATE = {
     "x_t0_exc": 0.3,
     "x_t0_inh": 0.3,
     "x_med0": 0.1,
-    "pka_d10": 0.3,
-    "pka_d20": 0.3,
+    "pka_d10": 0.25,
+    "pka_d20": 0.25,
 }
 
 # Scalar initial VALUES of trainable weight params that aren't fan-in-scaled
@@ -348,13 +348,13 @@ _CBT_FAMILY_STRUCTURE = {
                           # pinned ~0.99, no dynamic range under the clip/exp init). 1.0
                           # rests pkaD1 ~0.5 (design target) with D1 headroom to gate.
                           "da_pka_gain": 1.0},
-        # PKA starts at 0.3 (the in-band bg_nln operating point), not 0.5: with the
-        # de-saturated loop, pka=0.5 sits in the SATURATING bg_nln regime (D1/D2->~0.95)
-        # and, because pka rises fast but falls slowly (tau_pka_fall>>rise), lingers there
-        # as a mid-trial spike. Starting at 0.3 (below the production level) lets pka rise
-        # into band with no saturated transient; each config then settles into its opponent
-        # attractor (low m_a2 -> D1 branch). See tests/init_state_fix/.
-        "extra_init": {"pka_d10": 0.3, "pka_d20": 0.3, "x_da0": 0.1, "x_ado0": 0.1},
+        # PKA starts LOW (0.25), not 0.5: with the de-saturated loop, pka=0.5 sits in the
+        # SATURATING bg_nln regime (D1/D2->~0.95) and, because pka rises fast but falls
+        # slowly (tau_pka_fall>>rise), lingers there as a mid-trial spike. A low start
+        # (below the production level) lets pka rise into band with no saturated transient,
+        # and gives the PKA clock room to ramp UP over the trial (the self-timing signal)
+        # rather than sitting flat. See tests/init_state_fix/.
+        "extra_init": {"pka_d10": 0.25, "pka_d20": 0.25, "x_da0": 0.1, "x_ado0": 0.1},
         "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
     },
 }

@@ -2,12 +2,12 @@
 
 import time
 
-import train_pavlovian
-import train_from_pavlovian
-import train_hybrid
-import test_hybrid
-import train_from_hybrid
-import testing_script
+import cbt_loop.train_pavlovian as tp
+import cbt_loop.train_from_pavlovian as tfp
+import cbt_loop.train_hybrid as th
+import cbt_loop.test_hybrid as test_hybrid
+import cbt_loop.train_from_hybrid as train_from_hybrid
+import cbt_loop.testing_script as testing_script
 
 
 def _run(name, fn):
@@ -18,8 +18,8 @@ def _run(name, fn):
 
 
 def main():
-    _run("train_pavlovian", train_pavlovian.main)
-    _run("train_hybrid", train_hybrid.main)
+    _run("train_pavlovian", tp.main)
+    _run("train_hybrid", th.main)
     _run("test_hybrid", test_hybrid.main)
     _run("train_from_hybrid", train_from_hybrid.main)
     _run("testing_script", testing_script.main)

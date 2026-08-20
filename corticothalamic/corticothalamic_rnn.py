@@ -48,37 +48,39 @@ def init_params(rng_key, n_input):
     out_scale = _rt["out_scale"]
     k = jr.split(rng_key, 24)
 
-    def _ln(key, shape):
-        # log-normally distributed synaptic MAGNITUDE (underlying N(0,1)); the Dale sign
-        # is applied by the +/- prefactor below. exc blocks -> +, inh blocks -> -.
-        return jnp.exp(jr.normal(key, shape))
+    def _mag(key, shape):
+        # exponential synaptic MAGNITUDE ~ Exp(1) (mean 1); with each block's 1/fan_in
+        # prefactor this is Exp with mean 1/fan_in (rate = fan_in) -- the one-signed (Dale)
+        # analog of He init (keeps a positive fan-in sum's mean drive O(1)). Dale sign is
+        # applied by the +/- prefactor below. exc blocks -> +, inh blocks -> -.
+        return jr.exponential(key, shape)
 
     params = {
         # --- cortex recurrence (Dale): exc = +, inh = - (signs match the forward's
         # exc/inh clip; magnitudes log-normal) ---
-        "J_cU": (g / math.sqrt(nU)) * _ln(k[0], (nU, nU)),   # cU->cU exc
-        "J_cL": (g / math.sqrt(nL)) * _ln(k[1], (nL, nL)),   # cL->cL exc
-        "B_cU_cL": (g / math.sqrt(nU)) * _ln(k[2], (nL, nU)),  # cU->cL exc
-        "B_cL_cU": (g / math.sqrt(nL)) * _ln(k[3], (nU, nL)),  # cL->cU exc
-        "J_cU_ci": (g / nU) * _ln(k[4], (nI, nU)),          # cU->cI exc
-        "J_cL_ci": (g / nL) * _ln(k[5], (nI, nL)),          # cL->cI exc
-        "J_ci_cU": -(g / nI) * _ln(k[6], (nU, nI)),          # cI->cU inh
-        "J_ci_cL": -(g / nI) * _ln(k[7], (nL, nI)),          # cI->cL inh
-        "J_c_ii": -(g / nI) * _ln(k[8], (nI, nI)),           # cI->cI inh
+        "J_cU": (g / math.sqrt(nU)) * _mag(k[0], (nU, nU)),   # cU->cU exc
+        "J_cL": (g / math.sqrt(nL)) * _mag(k[1], (nL, nL)),   # cL->cL exc
+        "B_cU_cL": (g / math.sqrt(nU)) * _mag(k[2], (nL, nU)),  # cU->cL exc
+        "B_cL_cU": (g / math.sqrt(nL)) * _mag(k[3], (nU, nL)),  # cL->cU exc
+        "J_cU_ci": (g / nU) * _mag(k[4], (nI, nU)),          # cU->cI exc
+        "J_cL_ci": (g / nL) * _mag(k[5], (nI, nL)),          # cL->cI exc
+        "J_ci_cU": -(g / nI) * _mag(k[6], (nU, nI)),          # cI->cU inh
+        "J_ci_cL": -(g / nI) * _mag(k[7], (nL, nI)),          # cI->cL inh
+        "J_c_ii": -(g / nI) * _mag(k[8], (nI, nI)),           # cI->cI inh
         # --- thalamus recurrence (Dale) ---
-        "J_t_ee": (g / math.sqrt(nTe)) * _ln(k[9], (nTe, nTe)),  # t_exc->t_exc exc
-        "J_t_ei": -(g / nTi) * _ln(k[10], (nTe, nTi)),       # t_inh->t_exc inh
-        "J_t_ie": (g / nTe) * _ln(k[11], (nTi, nTe)),       # t_exc->t_inh exc
-        "J_t_ii": -(g / nTi) * _ln(k[12], (nTi, nTi)),       # t_inh->t_inh inh
+        "J_t_ee": (g / math.sqrt(nTe)) * _mag(k[9], (nTe, nTe)),  # t_exc->t_exc exc
+        "J_t_ei": -(g / nTi) * _mag(k[10], (nTe, nTi)),       # t_inh->t_exc inh
+        "J_t_ie": (g / nTe) * _mag(k[11], (nTi, nTe)),       # t_exc->t_inh exc
+        "J_t_ii": -(g / nTi) * _mag(k[12], (nTi, nTi)),       # t_inh->t_inh inh
         # --- cross-area (Dale) ---
-        "B_t_cU": (g / nTe) * _ln(k[13], (nU, nTe)),        # t_exc->cU exc
-        "B_t_c_inh": (g / nTe) * _ln(k[14], (nI, nTe)),     # t_exc->cI EXC (drives ffwd inhib); forward applies _exc
-        "B_cU_t_exc": (g / nU) * _ln(k[15], (nTe, nU)),     # cU->t_exc exc
-        "B_cU_t_inh": (g / nU) * _ln(k[16], (nTi, nU)),     # cU->t_inh exc
+        "B_t_cU": (g / nTe) * _mag(k[13], (nU, nTe)),        # t_exc->cU exc
+        "B_t_c_inh": (g / nTe) * _mag(k[14], (nI, nTe)),     # t_exc->cI EXC (drives ffwd inhib); forward applies _exc
+        "B_cU_t_exc": (g / nU) * _mag(k[15], (nTe, nU)),     # cU->t_exc exc
+        "B_cU_t_inh": (g / nU) * _mag(k[16], (nTi, nU)),     # cU->t_inh exc
         # --- external drives (constrained positive): log-normal magnitude ---
-        "B_cue_cU": in_scale * _ln(k[17], (nU, n_input)),
-        "B_cue_cL": in_scale * _ln(k[18], (nL, n_input)),
-        "w_out_t": out_scale * _ln(k[19], (n_output, nTe)),
+        "B_cue_cU": in_scale * _mag(k[17], (nU, n_input)),
+        "B_cue_cL": in_scale * _mag(k[18], (nL, n_input)),
+        "w_out_t": out_scale * _mag(k[19], (n_output, nTe)),
         # --- biases ---
         "b_cU": jnp.zeros((nU,)), "b_cL": jnp.zeros((nL,)), "b_cI": jnp.zeros((nI,)),
         "b_t_exc": jnp.zeros((nTe,)), "b_t_inh": jnp.zeros((nTi,)),

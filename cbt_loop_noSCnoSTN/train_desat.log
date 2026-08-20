@@ -1,0 +1,17 @@
+[init=scratch] building fresh params from init_params (no Pavlovian bootstrap)
+[balanced_init] cortico-thalamic loop rho(M): 1.701 -> 1.000 (target 1.0, tau=7.0)
+Hybrid batch: inputs (100, 1000, 2) (2 cue channels: preparatory + go)
+Training 2000 iters -> params_hybrid_scratch.pkl
+step 200, loss: 170.934326, reward: 0.0000, log_reward: -170.7088, success: 0.0000, entropy: 0.5405, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.1151, tail: 0.1158, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 140.205261, reward: 0.0000, log_reward: -140.0167, success: 0.0000, entropy: 0.4912, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0966, tail: 0.0969, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 115.398132, reward: 0.0000, log_reward: -115.2405, success: 0.0000, entropy: 0.4431, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0810, tail: 0.0811, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 95.029030, reward: 0.0000, log_reward: -94.8976, success: 0.0000, entropy: 0.3966, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0677, tail: 0.0677, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 78.234001, reward: 0.0000, log_reward: -78.1246, success: 0.0000, entropy: 0.3526, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0564, tail: 0.0564, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 64.360863, reward: 0.0000, log_reward: -64.2701, success: 0.0000, entropy: 0.3114, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0469, tail: 0.0469, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 52.909161, reward: 0.0000, log_reward: -52.8341, success: 0.0000, entropy: 0.2734, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0389, tail: 0.0389, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1600, loss: 43.465477, reward: 0.0000, log_reward: -43.4035, success: 0.0000, entropy: 0.2389, brevity: 0.0000, norm_resp_time: 0.000, silence: 0.0322, tail: 0.0322, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1800, loss: 35.687458, reward: 0.0000, log_reward: -35.6363, success: 0.0000, entropy: 0.2077, brevity: 0.0001, norm_resp_time: 0.000, silence: 0.0266, tail: 0.0266, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2000, loss: 29.294451, reward: 0.0000, log_reward: -29.2492, success: 0.0000, entropy: 0.1800, brevity: 0.0032, norm_resp_time: 0.006, silence: 0.0219, tail: 0.0219, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+Saved hybrid params to: /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/params_hybrid_scratch.pkl
+Final logged loss: 29.294451
+Final mean reward: 0.0000

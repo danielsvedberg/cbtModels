@@ -61,7 +61,9 @@ def _rho(params, config, clip):
 
 
 def main():
-    params, config = cbtl.init_params(jr.PRNGKey(cfg.TRAINING_CONFIG["seed"]), n_input=2)
+    # n_input=1: the curriculum ENTERS at the pavlovian stage (single cue); the hybrid
+    # stage later expands the cue column to 2 via train_hybrid._make_dual_cue_weights.
+    params, config = cbtl.init_params(jr.PRNGKey(cfg.TRAINING_CONFIG["seed"]), n_input=1)
     params = dict(params)
 
     with SRC.open("rb") as f:
@@ -79,7 +81,7 @@ def main():
           f"clip-Dale, so effective weights identical)")
 
     print(f"noSCnoSTN loop after port: clip-aware rho={_rho(params, config, clip=True):.3f} "
-          f"(abs {_rho(params, config, clip=False):.3f}); BG blocks = native log-normal init")
+          f"(abs {_rho(params, config, clip=False):.3f}); BG blocks = native exponential (He-style, 1/fan_in) init")
 
     with OUT.open("wb") as f:
         pkl.dump({"params": params, "config": config}, f)
