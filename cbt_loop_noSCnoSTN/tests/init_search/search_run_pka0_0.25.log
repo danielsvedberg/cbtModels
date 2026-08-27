@@ -1,0 +1,114 @@
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc0] score=1.022 alive_both=0.38 (D1band=1.00 D2band=0.38) pka=0.93 nm=0.72 | D1=0.20 D2=0.06 da=0.13 ado=0.11  vals=[0.239, 0.057, 0.023, 0.021, 0.801, 0.896]  [21s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc1] score=1.119 alive_both=0.43 (D1band=1.00 D2band=0.43) pka=0.94 nm=0.85 | D1=0.16 D2=0.08 da=0.14 ado=0.02  vals=[0.212, 0.342, 0.166, 0.761, 0.803, 0.023]  [33s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc2] score=0.996 alive_both=0.38 (D1band=1.00 D2band=0.38) pka=0.94 nm=0.59 | D1=0.34 D2=0.06 da=0.13 ado=0.10  vals=[0.563, 0.023, 0.342, 0.04, 0.849, 0.54]  [44s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc3] score=1.046 alive_both=0.39 (D1band=0.49 D2band=0.39) pka=0.91 nm=0.82 | D1=0.08 D2=0.06 da=0.13 ado=0.06  vals=[0.064, 0.104, 0.022, 0.032, 0.664, 0.641]  [55s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc4] score=0.961 alive_both=0.30 (D1band=0.30 D2band=0.32) pka=0.93 nm=0.77 | D1=0.05 D2=0.90 da=0.10 ado=0.21  vals=[0.219, 0.089, 0.969, 0.91, 0.678, 0.644]  [66s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc5] score=1.303 alive_both=0.63 (D1band=0.98 D2band=0.63) pka=0.99 nm=0.72 | D1=0.17 D2=0.11 da=0.09 ado=0.06  vals=[0.292, 0.091, 0.034, 0.332, 0.524, 0.318]  [77s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc6] score=1.027 alive_both=0.39 (D1band=0.39 D2band=0.39) pka=0.88 nm=0.81 | D1=0.06 D2=0.06 da=0.11 ado=0.04  vals=[0.132, 0.637, 0.758, 0.08, 0.569, 0.329]  [88s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc7] score=1.010 alive_both=0.32 (D1band=0.32 D2band=0.51) pka=0.93 nm=0.90 | D1=0.05 D2=0.83 da=0.04 ado=0.19  vals=[0.202, 0.075, 0.092, 0.639, 0.238, 0.618]  [99s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc8] score=1.052 alive_both=0.39 (D1band=0.39 D2band=0.39) pka=0.87 nm=0.91 | D1=0.06 D2=0.06 da=0.16 ado=0.02  vals=[0.028, 0.511, 0.428, 0.051, 0.861, 0.076]  [110s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc9] score=1.070 alive_both=0.39 (D1band=0.39 D2band=0.65) pka=0.93 nm=0.88 | D1=0.06 D2=0.13 da=0.05 ado=0.03  vals=[0.074, 0.036, 0.115, 0.444, 0.241, 0.07]  [121s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc10] score=1.112 alive_both=0.43 (D1band=0.43 D2band=0.67) pka=0.95 nm=0.83 | D1=0.07 D2=0.11 da=0.06 ado=0.07  vals=[0.097, 0.043, 0.028, 0.191, 0.307, 0.665]  [132s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc11] score=1.031 alive_both=0.39 (D1band=0.39 D2band=0.39) pka=0.87 nm=0.83 | D1=0.06 D2=0.06 da=0.12 ado=0.07  vals=[0.043, 0.782, 0.083, 0.03, 0.624, 0.91]  [143s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc12] score=1.040 alive_both=0.39 (D1band=0.41 D2band=0.39) pka=0.89 nm=0.82 | D1=0.07 D2=0.06 da=0.12 ado=0.07  vals=[0.111, 0.821, 0.14, 0.105, 0.615, 0.975]  [154s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc13] score=1.082 alive_both=0.45 (D1band=1.00 D2band=0.45) pka=0.96 nm=0.61 | D1=0.23 D2=0.07 da=0.09 ado=0.11  vals=[0.803, 0.12, 0.382, 0.139, 0.528, 0.774]  [165s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc14] score=1.010 alive_both=0.31 (D1band=0.31 D2band=0.38) pka=0.93 nm=0.94 | D1=0.05 D2=0.87 da=0.02 ado=0.22  vals=[0.1, 0.349, 0.318, 0.752, 0.13, 0.72]  [176s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc15] score=1.519 alive_both=0.81 (D1band=0.97 D2band=0.81) pka=1.00 nm=0.85 | D1=0.75 D2=0.45 da=0.11 ado=0.31  vals=[0.739, 0.865, 0.021, 0.576, 0.962, 0.939]  [190s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc16] score=1.018 alive_both=0.39 (D1band=0.39 D2band=0.39) pka=0.87 nm=0.80 | D1=0.06 D2=0.06 da=0.10 ado=0.03  vals=[0.036, 0.881, 0.639, 0.491, 0.481, 0.243]  [203s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc17] score=1.014 alive_both=0.38 (D1band=1.00 D2band=0.38) pka=0.93 nm=0.69 | D1=0.21 D2=0.06 da=0.08 ado=0.11  vals=[0.453, 0.728, 0.056, 0.163, 0.445, 0.914]  [215s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc18] score=1.039 alive_both=0.39 (D1band=0.39 D2band=0.39) pka=0.87 nm=0.86 | D1=0.06 D2=0.06 da=0.13 ado=0.02  vals=[0.023, 0.345, 0.218, 0.022, 0.71, 0.035]  [228s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc19] score=1.055 alive_both=0.38 (D1band=0.98 D2band=0.38) pka=0.93 nm=0.83 | D1=0.21 D2=0.06 da=0.14 ado=0.03  vals=[0.382, 0.147, 0.744, 0.026, 0.828, 0.084]  [241s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc20] score=1.040 alive_both=0.38 (D1band=0.38 D2band=0.46) pka=0.88 nm=0.86 | D1=0.06 D2=0.08 da=0.06 ado=0.04  vals=[0.076, 0.107, 0.859, 0.178, 0.269, 0.252]  [254s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)
+[mc21] score=1.050 alive_both=0.40 (D1band=1.00 D2band=0.40) pka=0.96 nm=0.69 | D1=0.56 D2=0.06 da=0.08 ado=0.14  vals=[0.634, 0.048, 0.032, 0.061, 0.583, 0.552]  [266s]
+[balanced_init] cortico-thalamic loop rho(M): 1.723 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.677 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.749 -> 1.000 (target 1.0, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.647 -> 1.000 (target 1.0, tau=7.0)

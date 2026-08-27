@@ -17,10 +17,10 @@ def _run(name, fn):
 
 
 def main():
-    #_run("train_pavlovian", train_pavlovian.main)
-    #_run('test_pavlovian', test_pavlovian.main)
-    #_run("train_from_pavlovian", train_from_pavlovian.main)
-    _run("train_hybrid", train_hybrid.main)
+    _run("train_pavlovian", train_pavlovian.main)
+    _run('test_pavlovian', test_pavlovian.main)
+    _run("train_from_pavlovian", train_from_pavlovian.main)
+    #_run("train_hybrid", train_hybrid.main)
     _run("training_script", training_script.main)
     _run("testing_script", testing_script.main)
 

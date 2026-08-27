@@ -55,7 +55,7 @@ OPTIM_CONFIG = {
 }
 
 RL_CONFIG = {
-    "entropy_coef": 0.01,
+    "entropy_coef": 0.1,
     "baseline_momentum": 0.99,
     # Optimize log P(first response lands in the reward window) directly.
     # NOT "loss" (dense BCE): BCE scores timesteps independently and is nearly blind
@@ -64,8 +64,8 @@ RL_CONFIG = {
     # hazard reward ~39,000x, because pre-window firing compounds over ~684 steps.
     # Measured: hybrid-from-scratch reward 6e-4 under BCE vs 0.88 under log_reward.
     "objective_mode": "log_reward",
-    "brevity_coef": 0.5,
-    "silence_coef": 0.5,
+    "brevity_coef": 1.0,
+    "silence_coef": 1.0,
     "tail_coef": 0.5,
     "asym_coef": 0.0,
     "asym_margin": 0.5,
@@ -117,7 +117,7 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 10000,
+    "num_iters": 50000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
     "mode": "reinforce",   # "reinforce" (policy gradient) or "supervised"
@@ -154,16 +154,16 @@ CBT_RNN_CONFIG = {
     # Cortex excitatory pool split into two PT-like populations (Economo 2018).
     "n_c_U": 10,
     "n_c_L": 10,
-    "n_c_inh": 10,
-    "n_d1": 8,
-    "n_d2": 8,
-    "n_snc": 4,
-    "n_snr": 6,
+    "n_c_inh": 20,
+    "n_d1": 10,
+    "n_d2": 10,
+    "n_snc": 6,
+    "n_snr": 8,
     "n_gpe": 6,
     "n_stn": 6,      # dropped for noSCnoSTN
     "n_sc": 6,       # dropped for noSC and noSCnoSTN
     "n_t_exc": 10,
-    "n_t_inh": 5,
+    "n_t_inh": 10,
     "n_med": 4,
     "n_input": 1,
     "n_output": 1,
@@ -197,7 +197,7 @@ CBT_RUNTIME_CONFIG = {
     "tau_sc": 10.0,
     "tau_snc": 10.0,
     "tau_pka_fall": 900.0,  # moderate lengthening: longer memory than 500, less saturated than 1440
-    "tau_pka_rise": 10.0,
+    "tau_pka_rise": 100.0,
     "m_floor": 0.001,
     "snr_med_floor": 0.1,
     "m_floor_a1": 0.001,
@@ -276,10 +276,10 @@ CBT_WEIGHT_INIT = {
     # gain does NOT depend on the SNc pool size (replaces the vestigial 1/n_snc fan-in
     # scaling that dated from a per-connection (n_d, n_snc) design). 0.25 == old 1/n_snc
     # at n_snc=4, preserving the current magnitude.
-    "m_d1": 0.25,          # D1R excitatory drive on D1 PKA (per-SPN gain)
-    "m_d2": 0.25,          # D2R inhibitory drive on D2 PKA (per-SPN gain)
+    "m_d1": 0.9,          # D1R excitatory drive on D1 PKA (per-SPN gain)
+    "m_d2": 0.09,          # D2R inhibitory drive on D2 PKA (per-SPN gain)
     "m_a1": 0.05,          # A1R inhibitory drive on D1 PKA (per-SPN gain)
-    "m_a2": 0.01,          # A2R excitatory drive on D2 PKA (per-SPN gain)
+    "m_a2": 0.5,          # A2R excitatory drive on D2 PKA (per-SPN gain)
     "out_gain": 4.0,       # readout gain
     "out_bias": -1.0986123,  # readout bias = logit(0.25)
     "k_a": 1.0,            # tonic adenosine level (pre-sigmoid/exc)
@@ -302,12 +302,12 @@ _CBT_FAMILY_STRUCTURE = {
         # raises D1 PKA and brakes D2 PKA; adenosine does the inverse. noSC /
         # noSCnoSTN keep the canonical linear-integrator + soft-threshold-gate path.
         "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
-                          "pka_init_floor": 0.4, "pka_init_cap": 0.6},
+                          "pka_init_floor": 0.2, "pka_init_cap": 0.25},
         # Start PKA LOW so it ramps up over the trial (a rising clock), rather than
         # resting at its ~0.5 equilibrium from t=0. Mirrors promising_version
         # (pka_d10=0.1). The tonic-adenosine tuning (m_a1/m_a2) still sets the
         # equilibrium near 0.5, so PKA ramps 0.1 -> ~0.5 across the delay.
-        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5},  # clamped to [0.4,0.6] at use
+        "extra_init": {"pka_d10": 0.25, "pka_d20": 0.25},  # clamped to [0.4,0.6] at use
         # Adenosine drives BALANCED (m_a1 ~= m_a2) so A1R inhibition on D1 doesn't
         # swamp its (small) DA drive; m_a1 also CAPPED (extra_runtime m_a1_cap) so
         # training can't regrow A1R and collapse dSPN excitability. Keeps D1 alive.
@@ -319,17 +319,21 @@ _CBT_FAMILY_STRUCTURE = {
         # Both concentrations AND PKA use MASS-ACTION kinetics: production is
         # throttled by available substrate (1 - C/C_max) so each pool saturates at
         # its C_max instead of growing without bound. PKA is then fed directly into
-        # bg_nln as excitability b (no legacy per-step state squash). Plus the
-        # cbt_loop D1-preservation guards (mid-range PKA init, capped A1R gain,
-        # balanced m_a1/m_a2). da_max/ado_max bound the DA/adenosine pools.
+        # bg_nln as excitability b (no legacy per-step state squash). da_max/ado_max
+        # bound the DA/adenosine pools.
+        # DA/adenosine + PKA knobs are kept IN LOCKSTEP with cbt_loop_noSCnoSTN
+        # (da_pka_gain, da/ado_release, m_a1_cap, pka_init_floor/cap, pka_d10/d20);
+        # only stn_pacer_min is noSC-specific (STN).
         "extra_runtime": {
             "tau_da": 20.0, "tau_ado": 200.0,
-            "da_release": 1.0, "ado_release": 1.0,
+            "da_release": 0.5, "ado_release": 0.5,
             "da_max": 1.0, "ado_max": 1.0,
             "stn_pacer_min": 0.05,
-            "pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
+            "pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 1.0,
+            "pka_init_floor": 0.2, "pka_init_cap": 0.25,
+            "da_pka_gain": 1.0,
         },
-        "extra_init": {"x_da0": 0.1, "x_ado0": 0.1, "pka_d10": 0.5, "pka_d20": 0.5},
+        "extra_init": {"x_da0": 0.1, "x_ado0": 0.1, "pka_d10": 0.2, "pka_d20": 0.2},
         "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
     },
     "cbt_loop_noSCnoSTN": {
@@ -339,10 +343,13 @@ _CBT_FAMILY_STRUCTURE = {
         # clamped PKA inits, balanced adenosine. Same values as cbt_loop.
         # Dynamic DA/adenosine concentration model PORTED from noSC (mass-action
         # x_da/x_ado states; DA fast, adenosine slow; substrate-bounded at *_max).
-        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 0.08,
-                          "pka_init_floor": 0.4, "pka_init_cap": 0.6,
+        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 1.0,
+                          "pka_init_floor": 0.2, "pka_init_cap": 0.25,
                           "tau_da": 20.0, "tau_ado": 200.0,
-                          "da_release": 0.5, "ado_release": 0.5,
+                          # DA/adenosine release gains: RAW (exc=sigmoid wraps them in the
+                          # forward), so effective = sigmoid(raw) = 0.469 / 0.757. From the
+                          # init search (tests/init_search/, config spsa11=).
+                          "da_release": -0.1242, "ado_release": 1.1363,
                           "da_max": 1.0, "ado_max": 1.0,
                           # de-saturate D1: base da_pka_gain=4.0 drove pkaD1 to 0.77 (D1
                           # pinned ~0.99, no dynamic range under the clip/exp init). 1.0
@@ -354,8 +361,20 @@ _CBT_FAMILY_STRUCTURE = {
         # (below the production level) lets pka rise into band with no saturated transient,
         # and gives the PKA clock room to ramp UP over the trial (the self-timing signal)
         # rather than sitting flat. See tests/init_state_fix/.
+        # 0.25 == pka_init_cap: the init search scores the trial with BOTH PKAs held at
+        # 0.25, so start them there (tests/init_search/).
         "extra_init": {"pka_d10": 0.25, "pka_d20": 0.25, "x_da0": 0.1, "x_ado0": 0.1},
-        "extra_weight_init": {"m_a1": 0.06, "m_a2": 0.07},
+        # DA/adenosine PKA gains from the init search (tests/init_search/, config spsa11=):
+        # the ONLY init found that holds pka_d1 AND pka_d2 at 0.25 for the whole trial while
+        # keeping D1 and D2 both mid-band and balanced (D1 0.33 / D2 0.28, alive_both=1.00 on
+        # every seed). These are RAW values (effective = sigmoid(raw)), i.e. effective
+        # m_d1=0.748 m_d2=0.091 m_a1=0.071 m_a2=0.281 -- NOT the ~0.5 that any small raw
+        # collapses to under sigmoid, which is what made DA and adenosine cancel at equal
+        # weight in prod_d1/prod_d2 and left pka_d2 dead. The pathways need OPPOSITE
+        # DA/adenosine balances: m_d1/m_a1 = 10.5 (DA >> A1R on D1) vs m_d2/m_a2 = 0.32
+        # (A2aR >> DA on D2).
+        "extra_weight_init": {"m_d1": 1.0880, "m_d2": -2.3015,
+                              "m_a1": -2.5714, "m_a2": -0.9395},
     },
 }
 

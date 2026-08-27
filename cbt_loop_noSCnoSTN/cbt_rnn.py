@@ -419,10 +419,12 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         jnp.stack([j_x[1, 0],  j_w2[1, 0], j_x[1, 1],  j_w2[1, 1]]),   # I1
     ])
     b_cL_med = exc(params["B_cL_med"])  # shape (n_med//2, n_c_L): cL → medulla E units only
-    # SNr → Medulla E units: inhibitory with a minimum magnitude (floored exc,
-    # negated) so each weight stays ≤ -snr_med_floor and the tonic gate persists.
-    #snr_med_floor = config["snr_med_floor"]
-    b_snr_med = -inh(params["B_snr_med"])# + snr_med_floor)  # shape (n_med//2, n_snr)
+    # SNr → Medulla E units: INHIBITORY (SNr is GABAergic) -- the tonic motor gate,
+    # closing as SNr rises. inh(w) = -sigmoid(w) < 0 gives the correct sign. (Was
+    # -inh(...), which under the sigmoid wrapper double-negates to +sigmoid > 0 -- an
+    # INVERTED, excitatory "gate" that raised medulla output as SNr rose instead of
+    # shutting it off, so the response could never terminate. See tests/output_sharpness.)
+    b_snr_med = inh(params["B_snr_med"])  # shape (n_med//2, n_snr)
     c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
     out_gain = jnp.asarray(params["out_gain"])
     out_bias = jnp.asarray(params["out_bias"])
