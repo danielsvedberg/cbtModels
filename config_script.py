@@ -117,7 +117,7 @@ PAVLOVIAN_CONFIG = {
 }
 
 TRAINING_CONFIG = {
-    "num_iters": 50000,
+    "num_iters": 10000,
     "log_interval": 200,
     "seed": SEED_CONFIG["train_seed"],
     "mode": "reinforce",   # "reinforce" (policy gradient) or "supervised"
@@ -328,7 +328,7 @@ _CBT_FAMILY_STRUCTURE = {
             "tau_da": 20.0, "tau_ado": 200.0,
             "da_release": 0.5, "ado_release": 0.5,
             "da_max": 1.0, "ado_max": 1.0,
-            "stn_pacer_min": 0.05,
+            "stn_pacer_min": 0.05, "nt_mode": "forward_euler",
             "pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 1.0,
             "pka_init_floor": 0.2, "pka_init_cap": 0.25,
             "da_pka_gain": 1.0,
@@ -343,13 +343,43 @@ _CBT_FAMILY_STRUCTURE = {
         # clamped PKA inits, balanced adenosine. Same values as cbt_loop.
         # Dynamic DA/adenosine concentration model PORTED from noSC (mass-action
         # x_da/x_ado states; DA fast, adenosine slow; substrate-bounded at *_max).
-        "extra_runtime": {"pka_saturation": "mass_action", "pka_max": 1.0, "m_a1_cap": 1.0,
-                          "pka_init_floor": 0.2, "pka_init_cap": 0.25,
+        "extra_runtime": {"nt_mode": "forward_euler", "pka_saturation": "mass_action",
+                          "pka_max": 1.0, "m_a1_cap": 1.0, "pka_init_floor": 0.2, "pka_init_cap": 0.25,
+                          # Adenosine CLAMPED to a fixed tonic level: x_ado is held here every
+                          # step instead of integrating mean_stri. Severs the pka_d2 -> D2 ->
+                          # x_ado -> prod_d2 positive feedback, so pka_d2 is monostable (with
+                          # dynamic adenosine it has an UNSTABLE fixed point at 0.267,
+                          # lambda = 1.0045). extra_weight_init below is SOLVED for this value
+                          # -- change one and the PKA rest point moves. Set to None to restore
+                          # the dynamic pool. tau_ado/ado_release are then unused.
+                          "pin_ado": 0.062,
+                          # SNc pacer cap raised 0.2 -> 0.5 (family-scoped; the shared
+                          # CBT_RUNTIME_CONFIG value is untouched so cbt_loop / noSC keep 0.2).
+                          # snc_pacer = snc_pacer_min + sigmoid(P_snc)*(max-min), so the cap is a
+                          # HARD ceiling on SNc's intrinsic drive -- training P_snc cannot exceed
+                          # it. At 0.2 the pacer (~0.13) loses to ~0.5 of D2+GPe inhibition and
+                          # max(0,tanh(.)) pins SNc at exactly 0, which zeroes x_da and makes
+                          # pka_d1 unreachable at any gain. See tests/pka_stability/.
+                          # Measured SNc / x_da / pkaD1-at-trial-end over the cap (fresh init,
+                          # train seed, hybrid batch, no pins):
+                          #   0.2 -> 0.000 / 0.000 / 0.085      0.5 -> 0.010 / 0.006 / 0.111
+                          #   1.0 -> 0.119 / 0.063 / 0.273      2.0 -> 0.171 / 0.089 / 0.333
+                          # 0.8 is chosen because it lands on the SNc ~ 0.1 operating point the
+                          # gains below were solved at almost exactly: pkaD1 0.236 vs 0.235 and
+                          # D1 0.167 vs 0.168 against the pinned search reference. 1.0 also clears
+                          # the floor but overshoots (D1 0.323, ~2x the searched value, eating the
+                          # D1 headroom the gains were tuned for); 0.6 undershoots (SNc 0.037).
+                          # The init search itself ran with pin_snc/pin_ctx = 0.1, which are
+                          # deliberately NOT set here -- pinning cortex would stop the cue driving
+                          # the loop entirely and the model could not do the task.
+                          "snc_pacer_max": 0.8,
                           "tau_da": 20.0, "tau_ado": 200.0,
-                          # DA/adenosine release gains: RAW (exc=sigmoid wraps them in the
-                          # forward), so effective = sigmoid(raw) = 0.469 / 0.757. From the
-                          # init search (tests/init_search/, config spsa11=).
-                          "da_release": -0.1242, "ado_release": 1.1363,
+                          # DA release gain: RAW (exc=sigmoid wraps it), effective
+                          # sigmoid(0.1845) = 0.546. From the init search rank-1 config
+                          # (tests/init_search/, tag ado0sweep_pinSNC_pinCTX).
+                          # ado_release is INERT while pin_ado is set (the clamp overwrites the
+                          # x_ado integrator every step); kept for the pin_ado=None path.
+                          "da_release": 0.1845, "ado_release": 1.1363,
                           "da_max": 1.0, "ado_max": 1.0,
                           # de-saturate D1: base da_pka_gain=4.0 drove pkaD1 to 0.77 (D1
                           # pinned ~0.99, no dynamic range under the clip/exp init). 1.0
@@ -363,18 +393,27 @@ _CBT_FAMILY_STRUCTURE = {
         # rather than sitting flat. See tests/init_state_fix/.
         # 0.25 == pka_init_cap: the init search scores the trial with BOTH PKAs held at
         # 0.25, so start them there (tests/init_search/).
-        "extra_init": {"pka_d10": 0.25, "pka_d20": 0.25, "x_da0": 0.1, "x_ado0": 0.1},
-        # DA/adenosine PKA gains from the init search (tests/init_search/, config spsa11=):
-        # the ONLY init found that holds pka_d1 AND pka_d2 at 0.25 for the whole trial while
-        # keeping D1 and D2 both mid-band and balanced (D1 0.33 / D2 0.28, alive_both=1.00 on
-        # every seed). These are RAW values (effective = sigmoid(raw)), i.e. effective
-        # m_d1=0.748 m_d2=0.091 m_a1=0.071 m_a2=0.281 -- NOT the ~0.5 that any small raw
-        # collapses to under sigmoid, which is what made DA and adenosine cancel at equal
-        # weight in prod_d1/prod_d2 and left pka_d2 dead. The pathways need OPPOSITE
-        # DA/adenosine balances: m_d1/m_a1 = 10.5 (DA >> A1R on D1) vs m_d2/m_a2 = 0.32
-        # (A2aR >> DA on D2).
-        "extra_weight_init": {"m_d1": 1.0880, "m_d2": -2.3015,
-                              "m_a1": -2.5714, "m_a2": -0.9395},
+        "extra_init": {"pka_d10": 0.25, "pka_d20": 0.25, "x_da0": 0.1, "x_ado0": 0.062},
+        # DA/adenosine PKA gains: rank-1 config of the init search under the CLAMPED-adenosine
+        # model (tests/init_search/, tag ado0sweep_pinSNC_pinCTX; 168 configs, 6-D sweep where
+        # ado0 replaced the -- inert under the clamp -- g_ado_release).
+        #   effective:  m_d1 0.643   m_d2 0.074   m_a1 0.024   m_a2 0.619
+        #               g_da_release 0.546 (extra_runtime da_release)   ado0 0.062 (pin_ado)
+        #   RAW below = logit(effective), since exc()=sigmoid wraps them in the forward.
+        # Measured for this config: track_pka 1.000, alive_both 1.000, pkaD1 0.24+-0.01,
+        # pkaD2 0.24+-0.01, D1 0.18, D2 0.18, x_da 0.05 -- i.e. BOTH PKAs hold the 0.25 target
+        # all trial with both pathways mid-band. All six values landed INTERIOR to their search
+        # ranges (no railing), and the winners cluster on the closed-form D2 locus
+        # m_a2 * ado0 = P_req = 0.0370 (rank 1 within 3%; corr(score, log-distance) = -0.83),
+        # so the search and the algebra agree.
+        # CAVEAT: the search ran with SNc and cortex CLAMPED at 0.1 (cbt_rnn pin_snc / pin_ctx,
+        # both left None here) to supply the DA drive that a rectified-tanh nln otherwise kills.
+        # These gains therefore assume x_da ~ 0.05, which requires SNc ~ 0.1. snc_pacer_max
+        # above is the intended real mechanism for that; verify SNc actually leaves zero before
+        # trusting the D1 side, since prod_d1 = max(G*m_d1*x_da - m_a1*pin_ado, 0) rectifies to
+        # exactly 0 whenever x_da does.
+        "extra_weight_init": {"m_d1": 0.5884, "m_d2": -2.5268,
+                              "m_a1": -3.7054, "m_a2": 0.4853},
     },
 }
 

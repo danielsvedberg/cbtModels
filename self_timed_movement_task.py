@@ -18,8 +18,8 @@ def inh(w):
 
 
 def nln(x):
-    #return jnp.maximum(0, jax.nn.tanh(x))
-    return jax.nn.sigmoid(4*(x-0.5))
+    return jnp.maximum(0, jax.nn.tanh(x))
+    #return jax.nn.sigmoid(4*(x-0.5))
     #return jnp.maximum(0, x**3/(x**3+0.5**3))
     # return jax.nn.softplus(x - 4.0)
     # Hill function: defined on x >= 0 (firing rates are non-negative). Rectify

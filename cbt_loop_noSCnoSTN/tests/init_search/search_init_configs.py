@@ -1,4 +1,4 @@
-"""TEST: init_search -- search the 6 scalar DA/adenosine PKA gains for the init that HOLDS
+"""TEST: init_search -- search the DA/adenosine PKA init for the config that HOLDS
 pka_d1 AND pka_d2 at the target excitability (PKA_TARGET=0.25) across the whole trial, while
 keeping D1/D2 activity in an operating band -- not dead, not saturated.
 
@@ -9,7 +9,15 @@ MC+SPSA sweep), and reward crawls to ~0 at any affordable length, so it CANNOT r
 But the discriminating, goal-aligned signal -- do BOTH PKAs sit at the target through the
 trial -- is measurable from a FRESH-INIT forward pass in seconds. So:
 
-  STAGE 1 (search, fast):  for each candidate, fresh init x N seeds, override the 6 scalars,
+SEARCH SPACE (6-D): m_d1, m_d2, m_a1, m_a2, g_da_release, and `ado0` -- which REPLACES
+g_ado_release. ado0 is set as x_ado0 AND as config["pin_ado"], so x_ado is CLAMPED at that level
+all trial instead of integrating mean_stri; g_ado_release then feeds nothing (verified: zero
+gradient, bit-identical timecourses) and is not searched. Note the adenosine half of regime_nm
+loses its dynamic-range term by construction (a pinned trace has zero range), so absolute
+scores are NOT comparable to the pre-clamp runs -- only the ranking within this run is.
+With x_da ~ 0 the exact D2 solution locus is the hyperbola m_a2 * ado0 = P_req.
+
+  STAGE 1 (search, fast):  for each candidate, fresh init x N seeds, override the 6 values,
     run the hybrid trials WITHOUT training, score how well the timecourses hit the target.
     Monte-Carlo sample + SPSA local ascent over 100s of configs (~30-45 min).
   STAGE 2 (validate):  fully train (6 seeds x 1000 iters) only the top-k, to measure the
@@ -60,27 +68,56 @@ import self_timed_movement_task as stmt
 
 cfg = C.for_family("cbt_loop_noSCnoSTN")
 AREAS = list(cbtl.STATE_AREA_ORDER)
-PARAM_NAMES = ["m_d1", "m_d2", "m_a1", "m_a2", "g_da_release", "g_ado_release"]
+PARAM_NAMES = ["m_d1", "m_d2", "m_a1", "m_a2", "g_da_release", "ado0"]
+# ado0 REPLACES g_ado_release in the sweep. It is NOT a sigmoid-wrapped gain: it is the
+# adenosine STATE level, set as x_ado0 AND as config["pin_ado"], so x_ado is CLAMPED there for
+# the whole trial (see _override). Each config therefore asks "what tonic adenosine level, with
+# what gains?", and prod_d2's adenosine drive is the PRODUCT m_a2 * ado0.
+# g_ado_release is DROPPED because the clamp makes it provably inert: it feeds only the x_ado
+# integrator, whose result pin_ado overwrites on the same step. Measured with ado pinned,
+# d(loss)/d(g_ado_release) = 0.0 exactly and g_ado_release 0.20 vs 0.80 gives bit-identical
+# timecourses (max |diff| 0.0 across Adenosine/pkaD2/D2/Medulla), in BOTH nt_mode branches.
+# Searching it would have burned one MC dimension and one SPSA probe direction on noise.
 # The 6 gains are searched in EFFECTIVE space (0,1): each is exc=sigmoid-wrapped in the
 # forward, so the stored param is RAW and effective = sigmoid(raw). We sample effective and
 # override params[gain] = logit(effective) (see _override). Sampling raw directly would only
 # span sigmoid([0.05,1.5])=[0.51,0.82] and could never reach the low m_a2 that lowers pka_d2.
 RANGES = {"m_d1": (0.5, 0.98), "m_d2": (0.05, 0.7), "m_a1": (0.01, 0.1),
-          "m_a2": (0.1, 0.9), "g_da_release": (0.2, 0.8), "g_ado_release": (0.2, 0.8)}
-LOG_SAMPLE = {"m_d1", "m_d2", "m_a1", "m_a2"}     # effective gains sampled log-uniform
+          "m_a2": (0.1, 0.9), "g_da_release": (0.2, 0.8),
+          # ado0 = the clamped tonic adenosine level, a STATE in [0,1]. Spans well below and
+          # above the 0.1 currently in config_script. prod_d2 = m_a2*ado0 - G*m_d2*x_da, so
+          # ado0 acts multiplicatively with m_a2 -> log-sampled like the gains.
+          "ado0": (0.02, 0.9)}
+LOG_SAMPLE = {"m_d1", "m_d2", "m_a1", "m_a2", "ado0"}   # sampled log-uniform
 # What often matters is the BALANCE within a gain pair, not either absolute value. Two kinds:
 # ACROSS pathways (D1-side vs D2-side partner of the same messenger) and WITHIN a pathway
 # (its DA drive vs its opposing adenosine drive). Both are plotted vs score in the report.
-RATIO_PAIRS = (("m_d1", "m_d2"), ("m_a1", "m_a2"), ("g_da_release", "g_ado_release"),
-               ("m_d1", "m_a1"), ("m_d2", "m_a2"))
+RATIO_PAIRS = (("m_d1", "m_d2"), ("m_a1", "m_a2"),
+               ("m_d1", "m_a1"), ("m_d2", "m_a2"),
+               # ado0 vs each adenosine sensitivity: with x_ado pinned, the D2 drive is the
+               # PRODUCT m_a2*ado0 and the D1 brake is m_a1*ado0, so the level and the gain
+               # trade off directly against each other.
+               ("m_a2", "ado0"), ("m_a1", "ado0"))
 W_PKA, W_ALIVE, W_NM = 1.0, 0.5, 0.25   # holding PKA at target is now the primary objective
 TC_AREAS = ("D1", "D2", "DA", "Adenosine", "pkaD1", "pkaD2")
 PKA_TARGET = 0.25      # THE GOAL: pka_d1 and pka_d2 should sit here all trial
 PKA_TOL = 0.05         # full credit within +-TOL of the target
 PKA_WIDTH = 0.15       # zero credit beyond +-WIDTH
 PKA0 = PKA_TARGET      # force the PKA init state (pka_d10/pka_d20) to start on target
+PIN_SNC = 0.1          # clamp every SNc unit to this rate for the whole trial (None = free)
+PIN_CTX = 0.1          # clamp every cortical unit (cU, cL, c_inh) likewise
 OBJECTIVE = f"pka_target_{PKA_TARGET}"   # stamped on metrics; stale entries get re-scored
-TAG = "pka0_0.25"      # output suffix so this run sits beside the original (pka0=0.5)
+# Raw production needed to hold pka* at PKA_TARGET: pka* = 9P/(1+9P) for tau_f/tau_r = 9, so
+# P_req = p / ((tau_f/tau_r)(1-p)). With x_ado pinned and x_da ~ 0, prod_d2 = m_a2*ado0, so the
+# exact-solution locus in the (m_a2, ado0) plane is the hyperbola m_a2*ado0 = P_req.
+P_REQ = PKA_TARGET / ((cfg.RUNTIME_CONFIG["tau_pka_fall"] /
+                       cfg.RUNTIME_CONFIG["tau_pka_rise"]) * (1.0 - PKA_TARGET))
+TAG = "ado0sweep_pinSNC_halfnormal"  # output suffix: 7-D sweep (6 gains + ado0) under nln=max(0,tanh(x)),
+                            # with x_ado CLAMPED at the sampled ado0 (config["pin_ado"]).
+                            # Earlier tags: pka0_0.25          -- nln=sigmoid, dynamic adenosine
+                            #               pka0_0.25_recttanh -- nln=rect-tanh, dynamic adenosine
+                            # Stored timecourses differ across all three, so each keeps its own
+                            # results file rather than being merged with --resume.
 RESULTS = HERE / f"results_{TAG}.json"
 _HYBRID = None
 
@@ -132,10 +169,27 @@ def eval_activity(params, config, inputs):
 
 def _override(seed, vals, n_input):
     p, c = cbtl.init_params(jr.PRNGKey(seed), n_input=n_input)
-    p = dict(p)
+    p = dict(p); c = dict(c)
     for name, v in zip(PARAM_NAMES, vals):
-        e = float(np.clip(v, 1e-3, 1.0 - 1e-3))   # v is the EFFECTIVE gain in (0,1)
-        p[name] = jnp.array(np.log(e / (1.0 - e)))  # store raw = logit(effective); fwd sigmoids it
+        if name == "ado0":
+            # NOT a gain: the adenosine STATE level, used directly (no sigmoid wrapper).
+            # Set as the initial state AND as pin_ado, so x_ado is held at exactly this value
+            # for the whole trial instead of integrating mean_stri. The forward also clips
+            # every initial state to [0,1], so keep ado0 in range here.
+            a = float(np.clip(v, 0.0, 1.0))
+            p["x_ado0"] = jnp.full_like(jnp.asarray(p["x_ado0"]), a)
+            c["pin_ado"] = a
+        else:
+            e = float(np.clip(v, 1e-3, 1.0 - 1e-3))   # v is the EFFECTIVE gain in (0,1)
+            p[name] = jnp.array(np.log(e / (1.0 - e)))  # raw = logit(effective); fwd sigmoids it
+    # SNc and all three cortical pools CLAMPED (see PIN_SNC/PIN_CTX): under max(0,tanh(x))
+    # both rectify to exactly 0 at rest (SNc's pacer is capped at 0.2 against ~0.5 of D2+GPe
+    # inhibition; cortex has no pacer at all), which zeroes x_da and makes pka_d1 unreachable
+    # at ANY gain. Clamping them supplies the DA drive the search needs to discriminate.
+    if PIN_SNC is not None:
+        c["pin_snc"] = PIN_SNC
+    if PIN_CTX is not None:
+        c["pin_ctx"] = PIN_CTX
     p["pka_d10"] = jnp.full_like(jnp.asarray(p["pka_d10"]), PKA0)  # force PKA init start
     p["pka_d20"] = jnp.full_like(jnp.asarray(p["pka_d20"]), PKA0)  # (fwd clamps to [floor,cap])
     return p, c
@@ -312,10 +366,14 @@ def build_report(results):
     V = np.array([r["vals"] for r in results])
     S = np.array([r["metrics"]["score"] for r in results])
 
-    # 1) score vs each param
-    fig, ax = plt.subplots(2, 3, figsize=(15, 8))
+    # 1) score vs each param (grid sized to len(PARAM_NAMES), not hardcoded)
+    _nc = 3
+    _nr = int(np.ceil(len(PARAM_NAMES) / _nc))
+    fig, ax = plt.subplots(_nr, _nc, figsize=(5 * _nc, 4 * _nr), squeeze=False)
+    for k in range(len(PARAM_NAMES), _nr * _nc):
+        ax[k // _nc][k % _nc].axis("off")
     for i, n in enumerate(PARAM_NAMES):
-        a = ax[i // 3][i % 3]
+        a = ax[i // _nc][i % _nc]
         a.scatter(V[:, i], S, c=S, cmap="viridis", s=30)
         a.set_xlabel(n); a.set_ylabel("pka-target score"); a.grid(alpha=0.3)
         if n in LOG_SAMPLE:
@@ -324,11 +382,20 @@ def build_report(results):
     fig.tight_layout()
     fig.savefig(HERE / f"score_vs_param_{TAG}.png", dpi=110, bbox_inches="tight"); plt.close(fig)
 
-    # 2) g_da x g_ado plane
+    # 2) m_a2 x ado0 plane -- the two factors whose PRODUCT is the whole D2 PKA drive once
+    # x_ado is pinned (prod_d2 = m_a2*ado0 - G*m_d2*x_da). Replaces the old g_da x g_ado plane,
+    # which is uninformative here because g_ado_release is inert under the clamp.
+    _ia2, _iad = PARAM_NAMES.index("m_a2"), PARAM_NAMES.index("ado0")
     fig, ax = plt.subplots(figsize=(6.5, 5.5))
-    sc = ax.scatter(V[:, 4], V[:, 5], c=S, cmap="viridis", s=60)
-    ax.set_xlabel("g_da_release"); ax.set_ylabel("g_ado_release")
-    ax.set_title("release-gain plane, colored by pka-target score"); plt.colorbar(sc, ax=ax)
+    sc = ax.scatter(V[:, _ia2], V[:, _iad], c=S, cmap="viridis", s=60)
+    _p = np.logspace(np.log10(max(V[:, _ia2].min(), 1e-4)), np.log10(V[:, _ia2].max()), 50)
+    ax.plot(_p, P_REQ / _p, "--", color="crimson", lw=1.6,
+            label=f"m_a2*ado0 = P_req = {P_REQ:.4f}\n(exact pka_d2 = {PKA_TARGET} when x_da = 0)")
+    ax.set_xscale("log"); ax.set_yscale("log")
+    ax.set_xlim(V[:, _ia2].min(), V[:, _ia2].max()); ax.set_ylim(V[:, _iad].min(), V[:, _iad].max())
+    ax.set_xlabel("m_a2"); ax.set_ylabel("ado0 (clamped x_ado)"); ax.legend(fontsize=7)
+    ax.set_title("D2 drive plane m_a2 x ado0, colored by pka-target score")
+    plt.colorbar(sc, ax=ax)
     fig.tight_layout(); fig.savefig(HERE / f"release_plane_{TAG}.png", dpi=110, bbox_inches="tight"); plt.close(fig)
 
     # 3) score vs the ratio of each gain pair (balance, not absolute level)
@@ -394,6 +461,9 @@ def build_report(results):
     corrs = {n: float(np.corrcoef(np.log(V[:, i]) if n in LOG_SAMPLE else V[:, i], S)[0, 1])
              for i, n in enumerate(PARAM_NAMES)}
     lines = [f"# init-config search report (objective: pka_d1 = pka_d2 = {PKA_TARGET})\n",
+             f"7-D sweep: the 6 gains PLUS `ado0`, with x_ado CLAMPED at ado0 (`pin_ado`) "
+             f"for the whole trial. P_req (raw production for pka*={PKA_TARGET}) = {P_REQ:.4f}; "
+             f"with x_da~0 the D2 solution locus is m_a2*ado0 = P_req.\n",
              f"{len(results)} configs scored on how well the fresh-init PKA traces HOLD "
              f"{PKA_TARGET} for the whole trial ({len(validated)} validated by full training).\n",
              f"`score = 1.0*track_pka + 0.5*alive_both + 0.25*regime_nm`, where `track_pka` is the "
@@ -423,7 +493,9 @@ def build_report(results):
               "-- gain-pair balance (corr of log ratio with score) --",
               *[f"{p:26s} corr={ratio_corrs[p]:+.2f}" for p in ratio_corrs], "```\n",
               "## Plots\n", f"- `score_vs_param_{TAG}.png` — pka-target score vs each of the 6 init params",
-              f"- `release_plane_{TAG}.png` — g_da x g_ado colored by pka-target score",
+              f"- `release_plane_{TAG}.png` — m_a2 x ado0 (the two factors of the D2 PKA drive "
+              f"once x_ado is pinned), colored by score, with the exact-solution hyperbola "
+              f"m_a2*ado0 = P_req = {P_REQ:.4f}",
               f"- `score_vs_ratio_{TAG}.png` — pka-target score vs the ratio of each gain pair "
               f"({', '.join(f'{a}/{b}' for a, b in RATIO_PAIRS)}), log x, binned-median trend",
               f"- `timecourses_{TAG}.png` — fresh-init x_da/x_ado/D1/D2/pkaD1/pkaD2 over the trial, top configs"]

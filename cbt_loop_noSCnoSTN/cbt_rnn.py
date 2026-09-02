@@ -119,13 +119,20 @@ def init_params(rng_key, n_input):
     #    sums, so they keep 1/sqrt(n).
 
     def _mag(key, shape):
-        # exponential synaptic MAGNITUDE ~ Exp(1) (mean 1). Combined with each block's
-        # 1/fan_in prefactor this is Exp with mean 1/fan_in (rate = fan_in) -- the
-        # one-signed (Dale) analog of He init: a fan-in-n sum of positive weights against
-        # positive rates keeps its MEAN drive O(1) (same-signed terms don't cancel). Dale
-        # sign is applied by the +/- prefactor per block (exc +, inh -), so under the
-        # clip-based exc/inh nothing is zeroed at init.
-        return jr.exponential(key, shape)
+        # HALF-NORMAL synaptic MAGNITUDE |N(0,1)| (mean sqrt(2/pi) = 0.798, std 0.603).
+        # Same role as before: a one-signed (Dale) magnitude that each block scales by its
+        # 1/fan_in (or 1/sqrt(fan_in)) prefactor, so a fan-in-n sum of same-signed weights
+        # against non-negative rates keeps its MEAN drive O(1) -- nothing cancels. Dale sign
+        # is applied by the +/- prefactor per block (exc +, inh -), so the sign never comes
+        # from the draw and nothing is zeroed at init under a clip-based exc/inh.
+        # Reverted from jr.exponential (Exp(1), mean 1, std 1): the half-normal has the same
+        # shape at the origin but a much lighter tail (std/mean 0.755 vs 1.0), so it produces
+        # far fewer outsized synapses. Note the mean magnitude drops 1.0 -> 0.798, i.e. every
+        # block is ~20% weaker than under Exp(1). The 17 cortico-thalamic loop blocks are
+        # unaffected in aggregate because balanced_init/normalize_loop rescales them to
+        # rho = balanced_target_rho afterwards; the BG blocks (striatum, GPe, SNr, SNc,
+        # medulla, readout) are NOT normalized and do carry the 0.8x through.
+        return jnp.abs(jr.normal(key, shape))
 
     params = {
         # Cortex split into two excitatory PT-like populations — cU (upper) and
@@ -331,6 +338,23 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_t0_inh = nln(x_t0_inh + noise_std * jr.normal(init_key, x_t0_inh.shape))
     x_med0 = nln(x_med0 + noise_std * jr.normal(init_key, x_med0.shape))
 
+    # HARD INVARIANT: every initial state is a rate or a concentration, so it lives in [0,1].
+    # The area states above are already bounded by nln (cU/cL/cI additionally capped at 0.5)
+    # and the PKA pair by the pka_init_floor/cap clip -- but x_da0/x_ado0 bypass both and were
+    # fully UNCONSTRAINED trainable params. A 10k-iter train_hybrid run drove x_da0 to -1.05
+    # (trial-mean x_da = -0.020), which rectifies prod_d1 = max(G*m_d1*x_da - m_a1*x_ado, 0) to
+    # exactly zero for the whole trial and silently switches the D1 PKA drive off. Clipping every
+    # state here also makes the bound independent of nln -- some nln options in
+    # self_timed_movement_task.py (e.g. softplus) are unbounded above, so relying on nln to
+    # supply the range is fragile. No-op for any state already in range.
+    _unit = lambda v: jnp.clip(v, 0.0, 1.0)
+    x_c0_U, x_c0_L, x_c0_inh = _unit(x_c0_U), _unit(x_c0_L), _unit(x_c0_inh)
+    x_d10, x_d20 = _unit(x_d10), _unit(x_d20)
+    x_snc0, x_gpe0, x_snr0 = _unit(x_snc0), _unit(x_gpe0), _unit(x_snr0)
+    x_t0_exc, x_t0_inh, x_med0 = _unit(x_t0_exc), _unit(x_t0_inh), _unit(x_med0)
+    pka_d10, pka_d20 = _unit(pka_d10), _unit(pka_d20)
+    x_da0, x_ado0 = _unit(x_da0), _unit(x_ado0)
+
     # Cortex blocks. Sign follows presynaptic identity (Dale's law). cU/cL are
     # excitatory PT-like populations; c_inh is the shared inhibitory pool.
     j_cU = no_autapse(exc(params["J_cU"]))        # cU → cU
@@ -451,9 +475,26 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # the branch resolves at trace time (JAX-safe).
     pin_pka_d1 = config.get("pin_pka_d1", None)
     pin_pka_d2 = config.get("pin_pka_d2", None)
+    # Optional adenosine clamp: if set to a float, x_ado is FORCED to that constant every
+    # step, so adenosine becomes a fixed tonic level instead of a dynamic pool. This severs
+    # the loop's one positive-feedback branch (pka_d2 -> D2 -> mean_stri -> x_ado -> prod_d2),
+    # which is what makes pka_d2 bistable with an UNSTABLE middle fixed point at 0.267
+    # (lambda = 1.0045). With x_ado pinned the D2 axis has a single stable fixed point.
+    # See tests/pka_stability/. Same static-branch pattern as pin_pka_d1/d2 (JAX-safe).
+    pin_ado = config.get("pin_ado", None)
+    # Optional SNc / cortex clamps: hold those populations at a fixed rate every step, so the
+    # DA->PKA subsystem can be studied without the dead-SNc and dead-cortex confounds that a
+    # hard rectifier nln creates (SNc's pacer is capped at snc_pacer_max=0.2 but faces ~0.5 of
+    # D2+GPe inhibition, so max(0,tanh(.)) pins it at exactly 0 -- see tests/pka_stability/).
+    # pin_ctx applies to all three cortical pools (cU, cL, c_inh). NOTE: with cortex pinned the
+    # cue can no longer drive the loop, so this is an open-loop probe, not a task-capable model.
+    # None/absent => normal dynamics; static config value, so the branch resolves at trace time.
+    pin_snc = config.get("pin_snc", None)
+    pin_ctx = config.get("pin_ctx", None)
     # PKA saturation rule (ported from cbt_loop): mass-action-bounded pool fed
     # directly into bg_nln as excitability b (no per-step state squash).
     pka_saturation = config["pka_saturation"]
+    nt_mode = config["nt_mode"]
     pka_max = config["pka_max"]
     pka_clip_eps = config["pka_clip_eps"]
 
@@ -528,17 +569,23 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_c_U = x_c_U + (1.0 / tau_c) * (b_t_cU @ x_t_exc)
         x_c_U = x_c_U + (1.0 / tau_c) * (b_cue_cU @ u_t)
         x_c_U = nln(x_c_U)
+        if pin_ctx is not None:
+            x_c_U = jnp.full_like(x_c_U, pin_ctx)
 
         # cL: cue only (no direct thalamic input).
         x_c_L = (1.0 - 1.0 / tau_c) * x_c_L + (1.0 / tau_c) * cL_rec
         x_c_L = x_c_L + (1.0 / tau_c) * (b_cue_cL @ u_t)
         x_c_L = nln(x_c_L)
+        if pin_ctx is not None:
+            x_c_L = jnp.full_like(x_c_L, pin_ctx)
 
         # c_inh: thalamic feedforward inhibition + cue.
         x_c_inh = (1.0 - 1.0 / tau_c) * x_c_inh + (1.0 / tau_c) * ci_rec
         x_c_inh = x_c_inh + (1.0 / tau_c) * (b_t_c_inh @ x_t_exc)
         x_c_inh = x_c_inh + (1.0 / tau_c) * (b_cue_c_inh @ u_t)
         x_c_inh = nln(x_c_inh)
+        if pin_ctx is not None:
+            x_c_inh = jnp.full_like(x_c_inh, pin_ctx)
 
         # thalamus: same pre-step snapshot trick.
         t_rec_to_exc = j_t_ee @ x_t_exc + j_t_ei @ x_t_inh
@@ -561,16 +608,30 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_snc = x_snc + (1.0 / tau_snc) * (b_d2_snc @ x_d2)
         x_snc = x_snc + (1.0 / tau_snc) * (b_gpe_snc @ x_gpe)
         x_snc = nln(x_snc)
+        # Clamp SNc to a fixed tonic rate (overrides the pacer/inhibition balance above).
+        if pin_snc is not None:
+            x_snc = jnp.full_like(x_snc, pin_snc)
         # SNc is broadcast as a single scalar to every SPN; each SPN scales it
         # by its own per-neuron gain m_d1[i] / m_d2[i].
         mean_snc = jnp.mean(x_snc)
-        mean_spn = jnp.mean(jnp.concatenate((x_d1, x_d2)))
+        mean_stri = jnp.mean(jnp.concatenate((x_d1, x_d2, x_snc, x_c_U)))
+
         # Mass-action DA / adenosine concentrations
         # (tau_da), adenosine slow (tau_ado). Substrate-throttled to saturate at *_max.
         da_release = mean_snc
-        ado_release = mean_spn
-        x_da  = x_da  + (1.0 / tau_da)  * (g_da_release  * da_release * jnp.maximum(1.0 - x_da / da_max, 0.0)  - x_da)
-        x_ado = x_ado + (1.0 / tau_ado) * (g_ado_release * ado_release * jnp.maximum(1.0 - x_ado / ado_max, 0.0) - x_ado)
+        ado_release = mean_stri
+
+        if nt_mode == 'mass_action':
+            x_da  = x_da  + (1.0 / tau_da)  * (g_da_release  * da_release * jnp.maximum(1.0 - x_da / da_max, 0.0)  - x_da)
+            x_ado = x_ado + (1.0 / tau_ado) * (g_ado_release * ado_release * jnp.maximum(1.0 - x_ado / ado_max, 0.0) - x_ado)
+        else:
+            x_da  = (1.0 - 1.0 / tau_da) * x_da  + (1.0 / tau_da)  * (g_da_release  * da_release)
+            x_ado = (1.0 - 1.0 / tau_ado) * x_ado + (1.0 / tau_ado) * (g_ado_release * ado_release)
+            x_da = tanh(x_da)
+            x_ado = tanh(x_ado)
+        # Clamp adenosine to a fixed tonic level (overrides the dynamics above).
+        if pin_ado is not None:
+            x_ado = jnp.full_like(x_ado, pin_ado)
 
         # PKA dynamics (leaky saturating integrator):
         # exponential leak with tau_pka_fall, rectified DA-driven production
