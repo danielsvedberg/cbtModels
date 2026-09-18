@@ -1,0 +1,91 @@
+[testing_script] loading params_supervised_thal.pkl
+ys shape: (5, 6, 1000, 1)
+actions shape: (5, 6, 1000, 1)
+num state arrays: 12
+state[0] shape: (5, 6, 1000, 40)
+mean success: 1.0
+mean response time (s): 0.026666661724448204
+-> weight matrix (csv + heatmap) ...
+   [FAIL] weight matrix (csv + heatmap): invalid index to scalar variable.
+Traceback (most recent call last):
+  File "/home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/testing_script.py", line 300, in _safe
+    fn(*args, **kwargs)
+  File "/home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/testing_script.py", line 185, in _save_weight_matrix
+    W, labels, areas, sizes, offsets = _build_weight_matrix(params)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/testing_script.py", line 131, in _build_weight_matrix
+    np.broadcast_to(g_d1[:, None], (n_d1, n_snc)) / n_snc)
+                    ~~~~^^^^^^^^^
+IndexError: invalid index to scalar variable.
+-> output activity ...
+   [ok] output activity
+-> activity by area ...
+   [ok] activity by area
+-> cue-aligned activity ...
+   [ok] cue-aligned activity
+-> binned responses ...
+   [FAIL] binned responses: Bin edges resulted in empty bins. Consider adjusting pct_low and pct_high to include more data or reducing target_bins.
+Traceback (most recent call last):
+  File "/home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/testing_script.py", line 300, in _safe
+    fn(*args, **kwargs)
+  File "/home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/plotting_functions.py", line 434, in plot_binned_responses
+    _, bin_boundaries, error_msg = bin_normal_data(response_times)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/plotting_functions.py", line 396, in bin_normal_data
+    raise ValueError('Bin edges resulted in empty bins. Consider adjusting pct_low and pct_high to include more data or reducing target_bins.')
+ValueError: Bin edges resulted in empty bins. Consider adjusting pct_low and pct_high to include more data or reducing target_bins.
+-> response time distributions ...
+   [ok] response time distributions
+-> dSPN-iSPN vs SNc correlogram ...
+0.614
+   [ok] dSPN-iSPN vs SNc correlogram
+-> dSPN-iSPN vs ramp-slope correlogram ...
+2.2936033051004435e-14
+   [ok] dSPN-iSPN vs ramp-slope correlogram
+-> dSPN-iSPN vs response-time correlogram ...
+0.217
+   [ok] dSPN-iSPN vs response-time correlogram
+-> objective function ...
+   objective: MSE=0.008015  BCE=0.579846  (training loss_type=mse)
+   [ok] objective function
+-> loss function schematic ...
+   [ok] loss function schematic
+-> adaptive loss function schematic ...
+   [ok] adaptive loss function schematic
+-> opto experiments ...
+Running opto demo conditions...
+  [opto] control    done (120 seeds)
+  [opto] inh dSPN   done (120 seeds)
+  [opto] inh iSPN   done (120 seeds)
+  [opto] stim dSPN  done (120 seeds)
+  [opto] stim iSPN  done (120 seeds)
+Running opto strength sweep...
+  [opto-sweep] inh dMSN   strength=-0.000 done
+  [opto-sweep] inh dMSN   strength=-0.200 done
+  [opto-sweep] inh dMSN   strength=-0.400 done
+  [opto-sweep] inh dMSN   strength=-0.600 done
+  [opto-sweep] inh dMSN   strength=-0.800 done
+  [opto-sweep] inh iMSN   strength=-0.000 done
+  [opto-sweep] inh iMSN   strength=-0.200 done
+  [opto-sweep] inh iMSN   strength=-0.400 done
+  [opto-sweep] inh iMSN   strength=-0.600 done
+  [opto-sweep] inh iMSN   strength=-0.800 done
+  [opto-sweep] stim dMSN  strength= 0.000 done
+  [opto-sweep] stim dMSN  strength= 0.200 done
+  [opto-sweep] stim dMSN  strength= 0.400 done
+  [opto-sweep] stim dMSN  strength= 0.600 done
+  [opto-sweep] stim dMSN  strength= 0.800 done
+  [opto-sweep] stim iMSN  strength= 0.000 done
+  [opto-sweep] stim iMSN  strength= 0.200 done
+  [opto-sweep] stim iMSN  strength= 0.400 done
+  [opto-sweep] stim iMSN  strength= 0.600 done
+  [opto-sweep] stim iMSN  strength= 0.800 done
+Opto plots complete.
+   [ok] opto experiments
+-> point-of-no-return experiments ...
+  [PNR] 1/3 cue magnitude sensitivity...
+  [PNR] 2/3 cue duration sensitivity...
+  [PNR] 3/3 dynamic perturbation (stop-signal)...
+  [PNR] done. Summary plots in /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/plots/pnr_test
+   [ok] point-of-no-return experiments
+Done. Plots written under /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/plots

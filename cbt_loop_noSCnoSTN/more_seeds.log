@@ -1,0 +1,310 @@
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012127, sup_loss: 0.012127, acc: 0.9500, in_window: 0.2596, off_window: 0.2598, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011900, sup_loss: 0.011900, acc: 0.9500, in_window: 0.2705, off_window: 0.2705, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011877, sup_loss: 0.011877, acc: 0.9500, in_window: 0.2742, off_window: 0.2742, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2749, off_window: 0.2749, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+seed  40  D1=0.4129  sep=-0.0000  mse=0.011875  broke@None  collapsed  [719s]
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011690, sup_loss: 0.011690, acc: 0.9500, in_window: 0.2817, off_window: 0.2758, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011523, sup_loss: 0.011523, acc: 0.9500, in_window: 0.2887, off_window: 0.2746, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011415, sup_loss: 0.011415, acc: 0.9500, in_window: 0.2907, off_window: 0.2734, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011224, sup_loss: 0.011224, acc: 0.9500, in_window: 0.2991, off_window: 0.2741, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.006694, sup_loss: 0.006694, acc: 0.9500, in_window: 0.4411, off_window: 0.2662, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2739, off_window: 0.2739, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+seed  41  D1=0.4275  sep=+0.1687  mse=0.006429  broke@1000  collapsed  [686s]
+[balanced_init] cortico-thalamic loop rho(M): 1.547 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.547 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.547 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011753, sup_loss: 0.011753, acc: 0.9500, in_window: 0.2786, off_window: 0.2745, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.012073, sup_loss: 0.012073, acc: 0.9500, in_window: 0.2610, off_window: 0.2610, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2748, off_window: 0.2748, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.547 -> 1.107 (target 1.107, tau=7.0)
+seed  42  D1=0.4036  sep=+0.0041  mse=0.011753  broke@None  collapsed  [684s]
+[balanced_init] cortico-thalamic loop rho(M): 1.486 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.486 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.486 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012009, sup_loss: 0.012009, acc: 0.9500, in_window: 0.2639, off_window: 0.2640, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011881, sup_loss: 0.011881, acc: 0.9500, in_window: 0.2732, off_window: 0.2732, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2749, off_window: 0.2749, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.486 -> 1.107 (target 1.107, tau=7.0)
+seed  43  D1=0.4387  sep=-0.0000  mse=0.011875  broke@None  collapsed  [687s]
+[balanced_init] cortico-thalamic loop rho(M): 1.530 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.530 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.530 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012052, sup_loss: 0.012052, acc: 0.9500, in_window: 0.2621, off_window: 0.2622, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011885, sup_loss: 0.011885, acc: 0.9500, in_window: 0.2723, off_window: 0.2723, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2747, off_window: 0.2747, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.530 -> 1.107 (target 1.107, tau=7.0)
+seed  44  D1=0.4230  sep=-0.0000  mse=0.011875  broke@None  collapsed  [684s]
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011613, sup_loss: 0.011613, acc: 0.9500, in_window: 0.2841, off_window: 0.2757, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011350, sup_loss: 0.011350, acc: 0.9500, in_window: 0.2936, off_window: 0.2744, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011917, sup_loss: 0.011917, acc: 0.9500, in_window: 0.2689, off_window: 0.2690, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.515 -> 1.107 (target 1.107, tau=7.0)
+seed  45  D1=0.3758  sep=+0.0193  mse=0.011350  broke@None  collapsed  [684s]
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012175, sup_loss: 0.012175, acc: 0.9500, in_window: 0.2583, off_window: 0.2586, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011916, sup_loss: 0.011916, acc: 0.9500, in_window: 0.2691, off_window: 0.2692, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011879, sup_loss: 0.011879, acc: 0.9500, in_window: 0.2737, off_window: 0.2737, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2748, off_window: 0.2748, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+seed  46  D1=0.3963  sep=-0.0000  mse=0.011875  broke@None  collapsed  [685s]
+[balanced_init] cortico-thalamic loop rho(M): 1.589 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.589 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.589 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011810, sup_loss: 0.011810, acc: 0.9500, in_window: 0.2775, off_window: 0.2748, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.012287, sup_loss: 0.012287, acc: 0.9500, in_window: 0.2551, off_window: 0.2556, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011878, sup_loss: 0.011878, acc: 0.9500, in_window: 0.2737, off_window: 0.2737, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.589 -> 1.107 (target 1.107, tau=7.0)
+seed  47  D1=0.4064  sep=+0.0025  mse=0.011816  broke@None  collapsed  [685s]
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011810, sup_loss: 0.011810, acc: 0.9500, in_window: 0.2773, off_window: 0.2746, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011517, sup_loss: 0.011517, acc: 0.9500, in_window: 0.2889, off_window: 0.2746, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011556, sup_loss: 0.011556, acc: 0.9500, in_window: 0.2833, off_window: 0.2721, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.009571, sup_loss: 0.009571, acc: 0.9500, in_window: 0.3386, off_window: 0.2700, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.001035, sup_loss: 0.001035, acc: 0.9959, in_window: 0.7070, off_window: 0.2523, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.000980, sup_loss: 0.000980, acc: 0.9964, in_window: 0.7214, off_window: 0.2520, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.000896, sup_loss: 0.000896, acc: 0.9969, in_window: 0.7191, off_window: 0.2518, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+seed  48  D1=0.3993  sep=+0.4664  mse=0.000866  broke@800  BREAKTHROUGH  [684s]
+[balanced_init] cortico-thalamic loop rho(M): 1.507 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.507 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.507 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012117, sup_loss: 0.012117, acc: 0.9500, in_window: 0.2600, off_window: 0.2602, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011898, sup_loss: 0.011898, acc: 0.9500, in_window: 0.2707, off_window: 0.2708, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011877, sup_loss: 0.011877, acc: 0.9500, in_window: 0.2743, off_window: 0.2743, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2749, off_window: 0.2749, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.507 -> 1.107 (target 1.107, tau=7.0)
+seed  49  D1=0.3971  sep=-0.0000  mse=0.011875  broke@None  collapsed  [684s]
+
+CUMULATIVE: 10/50 breakthroughs (20%) across seeds 0-49
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011831, sup_loss: 0.011831, acc: 0.9500, in_window: 0.2758, off_window: 0.2744, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011771, sup_loss: 0.011771, acc: 0.9500, in_window: 0.2785, off_window: 0.2755, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011878, sup_loss: 0.011878, acc: 0.9500, in_window: 0.2734, off_window: 0.2734, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+seed  50  D1=0.4515  sep=+0.0032  mse=0.011766  broke@None  collapsed  [714s]
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012069, sup_loss: 0.012069, acc: 0.9500, in_window: 0.2616, off_window: 0.2618, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011889, sup_loss: 0.011889, acc: 0.9500, in_window: 0.2719, off_window: 0.2720, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2746, off_window: 0.2746, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.510 -> 1.107 (target 1.107, tau=7.0)
+seed  51  D1=0.4161  sep=-0.0000  mse=0.011875  broke@None  collapsed  [690s]
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012115, sup_loss: 0.012115, acc: 0.9500, in_window: 0.2604, off_window: 0.2607, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011897, sup_loss: 0.011897, acc: 0.9500, in_window: 0.2710, off_window: 0.2711, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011877, sup_loss: 0.011877, acc: 0.9500, in_window: 0.2744, off_window: 0.2744, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2749, off_window: 0.2749, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.534 -> 1.107 (target 1.107, tau=7.0)
+seed  52  D1=0.4412  sep=-0.0000  mse=0.011875  broke@None  collapsed  [687s]
+[balanced_init] cortico-thalamic loop rho(M): 1.501 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.501 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.501 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012128, sup_loss: 0.012128, acc: 0.9500, in_window: 0.2598, off_window: 0.2600, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011900, sup_loss: 0.011900, acc: 0.9500, in_window: 0.2705, off_window: 0.2706, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011877, sup_loss: 0.011877, acc: 0.9500, in_window: 0.2742, off_window: 0.2742, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2749, off_window: 0.2749, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.501 -> 1.107 (target 1.107, tau=7.0)
+seed  53  D1=0.4321  sep=-0.0000  mse=0.011875  broke@None  collapsed  [689s]
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012079, sup_loss: 0.012079, acc: 0.9500, in_window: 0.2613, off_window: 0.2615, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011889, sup_loss: 0.011889, acc: 0.9500, in_window: 0.2717, off_window: 0.2718, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2746, off_window: 0.2746, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.537 -> 1.107 (target 1.107, tau=7.0)
+seed  54  D1=0.3775  sep=-0.0000  mse=0.011875  broke@None  collapsed  [688s]
+[balanced_init] cortico-thalamic loop rho(M): 1.499 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.499 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.499 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011806, sup_loss: 0.011806, acc: 0.9500, in_window: 0.2763, off_window: 0.2742, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011477, sup_loss: 0.011477, acc: 0.9500, in_window: 0.2885, off_window: 0.2760, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.009756, sup_loss: 0.009756, acc: 0.9500, in_window: 0.3405, off_window: 0.2739, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011883, sup_loss: 0.011883, acc: 0.9500, in_window: 0.2726, off_window: 0.2727, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.499 -> 1.107 (target 1.107, tau=7.0)
+seed  55  D1=0.3866  sep=+0.0689  mse=0.009677  broke@600  collapsed  [689s]
+[balanced_init] cortico-thalamic loop rho(M): 1.584 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.584 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.584 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011816, sup_loss: 0.011816, acc: 0.9500, in_window: 0.2758, off_window: 0.2738, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011629, sup_loss: 0.011629, acc: 0.9500, in_window: 0.2794, off_window: 0.2721, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.006515, sup_loss: 0.006515, acc: 0.9578, in_window: 0.4912, off_window: 0.2710, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.003249, sup_loss: 0.003249, acc: 0.9842, in_window: 0.6114, off_window: 0.2597, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.002613, sup_loss: 0.002613, acc: 0.9862, in_window: 0.6113, off_window: 0.2531, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.002112, sup_loss: 0.002112, acc: 0.9891, in_window: 0.6661, off_window: 0.2543, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.001674, sup_loss: 0.001674, acc: 0.9909, in_window: 0.6721, off_window: 0.2533, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.584 -> 1.107 (target 1.107, tau=7.0)
+seed  56  D1=0.4007  sep=+0.4177  mse=0.001616  broke@600  BREAKTHROUGH  [689s]
+[balanced_init] cortico-thalamic loop rho(M): 1.493 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.493 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.493 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011796, sup_loss: 0.011796, acc: 0.9500, in_window: 0.2777, off_window: 0.2747, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011902, sup_loss: 0.011902, acc: 0.9500, in_window: 0.2700, off_window: 0.2700, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2749, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.493 -> 1.107 (target 1.107, tau=7.0)
+seed  57  D1=0.3936  sep=+0.0030  mse=0.011793  broke@None  collapsed  [689s]
+[balanced_init] cortico-thalamic loop rho(M): 1.504 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.504 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.504 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011828, sup_loss: 0.011828, acc: 0.9500, in_window: 0.2757, off_window: 0.2742, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011779, sup_loss: 0.011779, acc: 0.9500, in_window: 0.2773, off_window: 0.2744, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011574, sup_loss: 0.011574, acc: 0.9500, in_window: 0.2781, off_window: 0.2698, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.002937, sup_loss: 0.002937, acc: 0.9861, in_window: 0.6057, off_window: 0.2627, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.002271, sup_loss: 0.002271, acc: 0.9894, in_window: 0.6792, off_window: 0.2539, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.001368, sup_loss: 0.001368, acc: 0.9936, in_window: 0.7057, off_window: 0.2525, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.001380, sup_loss: 0.001380, acc: 0.9923, in_window: 0.6897, off_window: 0.2518, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.504 -> 1.107 (target 1.107, tau=7.0)
+seed  58  D1=0.3983  sep=+0.4549  mse=0.001258  broke@800  BREAKTHROUGH  [689s]
+[balanced_init] cortico-thalamic loop rho(M): 1.487 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.487 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.487 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011735, sup_loss: 0.011735, acc: 0.9500, in_window: 0.2792, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011296, sup_loss: 0.011296, acc: 0.9500, in_window: 0.2927, off_window: 0.2742, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.004406, sup_loss: 0.004406, acc: 0.9860, in_window: 0.5169, off_window: 0.2679, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.001726, sup_loss: 0.001726, acc: 0.9932, in_window: 0.6593, off_window: 0.2552, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.001400, sup_loss: 0.001400, acc: 0.9943, in_window: 0.6856, off_window: 0.2530, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.001175, sup_loss: 0.001175, acc: 0.9959, in_window: 0.7015, off_window: 0.2525, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.001155, sup_loss: 0.001155, acc: 0.9956, in_window: 0.7088, off_window: 0.2524, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.487 -> 1.107 (target 1.107, tau=7.0)
+seed  59  D1=0.3908  sep=+0.4551  mse=0.001096  broke@600  BREAKTHROUGH  [689s]
+
+CUMULATIVE: 13/60 breakthroughs (22%) across seeds 0-59
+[balanced_init] cortico-thalamic loop rho(M): 1.557 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.557 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.557 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.011592, sup_loss: 0.011592, acc: 0.9500, in_window: 0.2854, off_window: 0.2753, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011519, sup_loss: 0.011519, acc: 0.9500, in_window: 0.2889, off_window: 0.2746, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011390, sup_loss: 0.011390, acc: 0.9500, in_window: 0.2962, off_window: 0.2763, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011254, sup_loss: 0.011254, acc: 0.9500, in_window: 0.2991, off_window: 0.2737, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011341, sup_loss: 0.011341, acc: 0.9500, in_window: 0.2939, off_window: 0.2700, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011126, sup_loss: 0.011126, acc: 0.9500, in_window: 0.3052, off_window: 0.2753, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011494, sup_loss: 0.011494, acc: 0.9500, in_window: 0.2890, off_window: 0.2754, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.557 -> 1.107 (target 1.107, tau=7.0)
+seed  60  D1=0.3850  sep=+0.0261  mse=0.011127  broke@None  collapsed  [719s]
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012100, sup_loss: 0.012100, acc: 0.9500, in_window: 0.2606, off_window: 0.2608, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011893, sup_loss: 0.011893, acc: 0.9500, in_window: 0.2712, off_window: 0.2713, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2745, off_window: 0.2745, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.522 -> 1.107 (target 1.107, tau=7.0)
+seed  61  D1=0.4028  sep=-0.0000  mse=0.011875  broke@None  collapsed  [696s]
+[balanced_init] cortico-thalamic loop rho(M): 1.511 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.511 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.511 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012020, sup_loss: 0.012020, acc: 0.9500, in_window: 0.2634, off_window: 0.2635, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011881, sup_loss: 0.011881, acc: 0.9500, in_window: 0.2730, off_window: 0.2730, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2748, off_window: 0.2748, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.511 -> 1.107 (target 1.107, tau=7.0)
+seed  62  D1=0.4500  sep=-0.0000  mse=0.011875  broke@None  collapsed  [693s]
+[balanced_init] cortico-thalamic loop rho(M): 1.492 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.492 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.492 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012202, sup_loss: 0.012202, acc: 0.9500, in_window: 0.2578, off_window: 0.2581, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011924, sup_loss: 0.011924, acc: 0.9500, in_window: 0.2685, off_window: 0.2686, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011880, sup_loss: 0.011880, acc: 0.9500, in_window: 0.2734, off_window: 0.2734, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2747, off_window: 0.2747, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.492 -> 1.107 (target 1.107, tau=7.0)
+seed  63  D1=0.3932  sep=-0.0000  mse=0.011875  broke@None  collapsed  [694s]
+[balanced_init] cortico-thalamic loop rho(M): 1.536 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.536 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.536 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012016, sup_loss: 0.012016, acc: 0.9500, in_window: 0.2636, off_window: 0.2637, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011881, sup_loss: 0.011881, acc: 0.9500, in_window: 0.2731, off_window: 0.2731, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2748, off_window: 0.2749, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+[balanced_init] cortico-thalamic loop rho(M): 1.536 -> 1.107 (target 1.107, tau=7.0)
+seed  64  D1=0.4145  sep=-0.0000  mse=0.011875  broke@None  collapsed  [696s]
+[balanced_init] cortico-thalamic loop rho(M): 1.495 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.495 -> 1.107 (target 1.107, tau=7.0)
+[balanced_init] cortico-thalamic loop rho(M): 1.495 -> 1.107 (target 1.107, tau=7.0)
+step 200, loss: 0.012024, sup_loss: 0.012024, acc: 0.9500, in_window: 0.2632, off_window: 0.2634, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011882, sup_loss: 0.011882, acc: 0.9500, in_window: 0.2729, off_window: 0.2729, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2748, off_window: 0.2748, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000

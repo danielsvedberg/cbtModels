@@ -9,12 +9,16 @@ from jax.nn import tanh
 
 
 def exc(w):
-    return jax.nn.sigmoid(w)
-    #jnp.clip(w, min=0.0)
+    # tanh + clip at 0: Dale-positive like the sigmoid form, but exc(0) == 0 rather than
+    # 0.5, and tanh(x) ~= x for the small fan-in-scaled magnitudes used at init, so the
+    # stored weight IS (approximately) the effective weight -- no logit inversion needed.
+    # NOTE this flips the exc(0) > 0.25 guard in init_params, which therefore SKIPS the
+    # wrapper-aware logit init. Weights saved under the sigmoid wrapper are in LOGIT space
+    # (~ -2.8) and tanh-clip maps those to 0, so old pkls are NOT loadable under this form.
+    return jnp.clip(jax.nn.tanh(w), 0.0, None)
 
 def inh(w):
-    return -jax.nn.sigmoid(w)
-    #jnp.clip(w, max=0.0)
+    return -jnp.clip(jax.nn.tanh(w), 0.0, None)
 
 
 def nln(x):
@@ -35,9 +39,16 @@ def bg_nln(x, b):
     #return x**jnp.exp(1) / (x**jnp.exp(1) + (1-b))
     #c = b/(1-b)
     #return jnp.maximum(jax.nn.tanh(c*x), 0)
-    c = 3/(1-b)
-    d = (1/6)*((1-b)/b)
-    return jax.nn.sigmoid(c*(x-d))
+    #c = 3/(1-b)
+    #d = (1/6)*((1-b)/b)
+    #return jax.nn.sigmoid(c*(x-d))
+    # Rectified: striatal output is a RATE, so it must not go negative. Bare tanh(a*x)
+    # made D1 negative on 45% of timesteps and D2 on 27% (measured at fresh init), which
+    # no gain sweep can fix. Matches nln's max(0, tanh(x)) rectification. Note this has
+    # no POSITIVE floor either -- unlike the old sigmoid form, bg_nln(0, b) == 0 for
+    # every b, so the striatum is silent on zero input.
+    a = 0.75/(1.0-b)
+    return jnp.maximum(0, jax.nn.tanh(a*x))
 
 def bg_nln_inh(x, b):
     c = 1-(b/(1-b))
@@ -164,6 +175,40 @@ def self_timed_movement_task(T_start, T_cue, T_wait, T_movement, T, null_trial=F
     inputs, outputs, masks = vmap(_single)(jnp.arange(num_starts))
 
     return inputs, outputs, masks
+
+
+def selftimed_step_target(T_start, T_cue, T_wait, T_movement, T,
+                          lo=0.25, hi=0.75, hold=50, delay=None, null_trial=False):
+    """Self-timed cue with a soft STEP target for dense supervised training.
+
+    The cue is exactly the one ``self_timed_movement_task`` emits (same T_start /
+    T_cue), but the target is a two-level waveform rather than a 0/1 response window:
+    hold ``lo`` everywhere, step to ``hi`` for ``hold`` timesteps, then back to ``lo``.
+
+    ``delay`` is the offset from CUE ONSET at which the step opens; ``None`` means
+    ``T_cue``, i.e. the step begins the moment the cue ends. Set it to
+    ``T_cue + T_wait`` instead to anchor the step at the movement-window onset (the
+    interval the reinforce objective rewards).
+
+    ``lo``/``hi`` are matched to the sigmoid readout: with the canonical
+    ``out_bias = logit(0.25)``, a silent readout population already outputs exactly
+    ``lo``, so the network starts at baseline and only has to learn the step.
+
+    Returns inputs (num_starts, T, 1), targets (num_starts, T, 1) in [lo, hi], and an
+    all-ones mask -- every timestep is supervised, so holding ``lo`` off-window is
+    part of the objective rather than a don't-care.
+    """
+    inputs, _, masks = self_timed_movement_task(
+        T_start, T_cue, T_wait, T_movement, T, null_trial=null_trial)
+    d = T_cue if delay is None else delay
+
+    def _single(i):
+        t0 = T_start[i] + d
+        out = jnp.full((T, 1), lo, dtype=jnp.float32)
+        return jax.lax.dynamic_update_slice(out, jnp.full((hold, 1), hi, dtype=jnp.float32), (t0, 0))
+
+    targets = vmap(_single)(jnp.arange(T_start.shape[0]))
+    return inputs, targets, masks
 
 
 def pavlovian_task(T_start, T_cue, T_response, T, null_trial=False):

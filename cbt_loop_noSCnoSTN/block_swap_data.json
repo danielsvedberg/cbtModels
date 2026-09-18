@@ -1,0 +1,122 @@
+[
+ {
+  "donor": 18,
+  "recipient": 13,
+  "swap": "none",
+  "n_blocks": 0,
+  "separation": 0.016418784856796265,
+  "mse": 0.011474940925836563,
+  "rescued": false,
+  "secs": 690.4
+ },
+ {
+  "donor": 18,
+  "recipient": 13,
+  "swap": "B_snr_t_exc",
+  "n_blocks": 1,
+  "separation": 0.01646384596824646,
+  "mse": 0.011397609487175941,
+  "rescued": false,
+  "secs": 680.6
+ },
+ {
+  "donor": 18,
+  "recipient": 13,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": 0.4659520089626312,
+  "mse": 0.0008664971683174372,
+  "rescued": true,
+  "secs": 682.2
+ },
+ {
+  "donor": 18,
+  "recipient": 13,
+  "swap": "thal_pair",
+  "n_blocks": 2,
+  "separation": 0.46612435579299927,
+  "mse": 0.0008821293013170362,
+  "rescued": true,
+  "secs": 681.6
+ },
+ {
+  "donor": 18,
+  "recipient": 13,
+  "swap": "J_d1",
+  "n_blocks": 1,
+  "separation": 0.02014446258544922,
+  "mse": 0.01133813802152872,
+  "rescued": false,
+  "secs": 682.4
+ },
+ {
+  "donor": 18,
+  "recipient": 13,
+  "swap": "ALL_LOOP",
+  "n_blocks": 17,
+  "separation": 0.015996843576431274,
+  "mse": 0.011481652967631817,
+  "rescued": false,
+  "secs": 681.3
+ },
+ {
+  "donor": 18,
+  "recipient": 0,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": 0.026348531246185303,
+  "mse": 0.01117232721298933,
+  "rescued": false,
+  "secs": 691.2
+ },
+ {
+  "donor": 18,
+  "recipient": 10,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": -5.662441253662109e-07,
+  "mse": 0.011875026859343052,
+  "rescued": false,
+  "secs": 685.7
+ },
+ {
+  "donor": 18,
+  "recipient": 14,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": -5.066394805908203e-07,
+  "mse": 0.011875023134052753,
+  "rescued": false,
+  "secs": 689.3
+ },
+ {
+  "donor": 18,
+  "recipient": 15,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": -1.1920928955078125e-06,
+  "mse": 0.011875057592988014,
+  "rescued": false,
+  "secs": 685.9
+ },
+ {
+  "donor": 18,
+  "recipient": 19,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": -9.834766387939453e-07,
+  "mse": 0.011875047348439693,
+  "rescued": false,
+  "secs": 685.7
+ },
+ {
+  "donor": 18,
+  "recipient": 30,
+  "swap": "J_t_ee",
+  "n_blocks": 1,
+  "separation": 0.4602469801902771,
+  "mse": 0.0010570093290880322,
+  "rescued": true,
+  "secs": 685.7
+ }
+]

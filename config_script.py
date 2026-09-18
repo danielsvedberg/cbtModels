@@ -124,6 +124,43 @@ TRAINING_CONFIG = {
     "loss_type": "bce",    # supervised mode only: "bce" or "mse"
 }
 
+# Supervised THALAMIC-READOUT mode (cbt_loop_noSCnoSTN). A dense-target alternative to
+# the REINFORCE path: the readout is a separate positive-weight vector off the thalamic
+# excitatory relay pool (cbt_rnn "C_thal", selected by runtime key readout_source =
+# "thalamus"), and the target is a soft step rather than the 0/1 response window.
+# Deliberately SELF-TIMED ONLY -- the step is anchored to the single STMT cue, so the
+# hybrid / pavlovian two-cue variants are not valid targets for it and train_supervised_thal
+# builds the self-timed task unconditionally.
+SUPERVISED_THAL_CONFIG = {
+    "target_lo": 0.25,     # baseline; == sigmoid(out_bias), so a silent readout starts here
+    "target_hi": 0.75,     # step height
+    "hold": 50,            # timesteps held at target_hi
+    # Offset from CUE ONSET at which the step opens. t_wait == 300, so the plateau runs
+    # [cue+300, cue+350): the network must bridge a 300-step delay on its own, which is
+    # what actually exercises the PKA clock. (Was t_cue = 10, i.e. the step opened as the
+    # cue ended -- a ~10-step cue-following reflex that never tested self-timing.)
+    # NOTE the reinforce reward window opens 10 steps later, at t_cue + t_wait = 310;
+    # use that instead if you want the supervised target to coincide with it exactly.
+    "delay": TASK_CONFIG["t_wait"],
+    # IN-WINDOW LOSS WEIGHT. The target is lo for ~95% of timesteps and hi for ~5%, so
+    # unweighted, 95% of the gradient says "hold baseline" and the optimal CONSTANT output is
+    # 0.95*lo + 0.05*hi = 0.2750 -- which is exactly where every collapsed run converged.
+    # supervised_loss uses the mask as a per-timestep WEIGHT (sum(per_t*mask)/sum(mask)), so
+    # upweighting in-window steps rebalances it; (1-f)/f = 19 makes the two classes equal.
+    # Measured on the 300-step task at 4200 iters: 4/10 breakthroughs unweighted -> 9/10 at 19x.
+    "in_window_weight": 19.0,
+    # FREEZE the t=0 state parameters (cbt_rnn.INIT_STATE_KEYS) so the optimiser cannot tune
+    # them. They are ordinary trainable params by default, which has caused two silent
+    # failures: x_da0 trains slightly negative and the [0,1] clip rectifies the INITIAL
+    # dopamine to exactly 0 (seed 42 ended there), and pka_d10/d20 train ABOVE pka_init_cap
+    # so the clip discards the learned value. Frozen, every trial starts from the
+    # CBT_INIT_STATE values and the network must produce its dynamics from the weights.
+    "freeze_init_states": True,
+    "loss_type": "mse",    # soft targets: squared error, not BCE (whose min is a nonzero floor)
+    "num_iters": 10000,
+    "log_interval": 200,
+}
+
 TEST_CONFIG = {
     "n_seeds": 5,
     "noise_std": 0.05,
@@ -169,7 +206,7 @@ CBT_RNN_CONFIG = {
     "n_output": 1,
     "g_bg": 1.0,
     "g_nm": 1.0,
-    "noise_std": 0.01,
+    "noise_std": 0.05,
     # Spectral-normalize the cortico-thalamic loop at init (loop_init.normalize_loop):
     # scale the 17 loop blocks so rho of the update map M=(1-1/tau)I+(1/tau)W equals
     # balanced_target_rho. Raw init is rho~1.76 -> the loop runs away until the sigmoid
@@ -196,8 +233,8 @@ CBT_RUNTIME_CONFIG = {
     "tau_stn": 10.0,
     "tau_sc": 10.0,
     "tau_snc": 10.0,
-    "tau_pka_fall": 900.0,  # moderate lengthening: longer memory than 500, less saturated than 1440
-    "tau_pka_rise": 100.0,
+    "tau_pka_fall": 500.0,  # moderate lengthening: longer memory than 500, less saturated than 1440
+    "tau_pka_rise": 50.0,
     "m_floor": 0.001,
     "snr_med_floor": 0.1,
     "m_floor_a1": 0.001,
@@ -239,7 +276,7 @@ CBT_RUNTIME_CONFIG = {
     "snc_pacer_min": 0.05,
     "snc_pacer_max": 0.2,
     "snr_pacer_max": 0.85,
-    "snr_pacer_min": 0.4,
+    "snr_pacer_min": 0.1,
     "gpe_pacer_min": 0.45,
     "gpe_pacer_max": 0.8,
     "stn_pacer_max": 0.3,
@@ -250,21 +287,21 @@ CBT_RUNTIME_CONFIG = {
 # store these as trainable params (cbt_loop, noSCnoSTN) use them as the init value;
 # noSC uses them directly as fixed initial conditions.
 CBT_INIT_STATE = {
-    "x_c0_U": 0.1,
-    "x_c0_L": 0.1,
-    "x_c0_inh": 0.1,
-    "x_d10": 0.1,
-    "x_d20": 0.1,
-    "x_snc0": 0.1,
-    "x_gpe0": 0.1,
+    "x_c0_U": 0.01,
+    "x_c0_L": 0.01,
+    "x_c0_inh": 0.4,
+    "x_d10": 0.15,
+    "x_d20": 0.15,
+    "x_snc0": 0.01,
+    "x_gpe0": 0.05,
     "x_stn0": 0.1,   # STN families only
-    "x_snr0": 0.1,
+    "x_snr0": 0.25,
     "x_sc0": 0.1,    # SC families only
-    "x_t0_exc": 0.3,
-    "x_t0_inh": 0.3,
+    "x_t0_exc": 0.1,
+    "x_t0_inh": 0.4,
     "x_med0": 0.1,
-    "pka_d10": 0.25,
-    "pka_d20": 0.25,
+    "pka_d10": 0.5,
+    "pka_d20": 0.5,
 }
 
 # Scalar initial VALUES of trainable weight params that aren't fan-in-scaled
@@ -325,7 +362,7 @@ _CBT_FAMILY_STRUCTURE = {
         # (da_pka_gain, da/ado_release, m_a1_cap, pka_init_floor/cap, pka_d10/d20);
         # only stn_pacer_min is noSC-specific (STN).
         "extra_runtime": {
-            "tau_da": 20.0, "tau_ado": 200.0,
+            "tau_da": 50.0, "tau_ado": 50.0,
             "da_release": 0.5, "ado_release": 0.5,
             "da_max": 1.0, "ado_max": 1.0,
             "stn_pacer_min": 0.05, "nt_mode": "forward_euler",
@@ -344,7 +381,7 @@ _CBT_FAMILY_STRUCTURE = {
         # Dynamic DA/adenosine concentration model PORTED from noSC (mass-action
         # x_da/x_ado states; DA fast, adenosine slow; substrate-bounded at *_max).
         "extra_runtime": {"nt_mode": "forward_euler", "pka_saturation": "mass_action",
-                          "pka_max": 1.0, "m_a1_cap": 1.0, "pka_init_floor": 0.2, "pka_init_cap": 0.25,
+                          "pka_max": 1.0, "m_a1_cap": 1.0, "pka_init_floor": 0.25, "pka_init_cap": 0.75,
                           # Adenosine CLAMPED to a fixed tonic level: x_ado is held here every
                           # step instead of integrating mean_stri. Severs the pka_d2 -> D2 ->
                           # x_ado -> prod_d2 positive feedback, so pka_d2 is monostable (with
@@ -352,7 +389,11 @@ _CBT_FAMILY_STRUCTURE = {
                           # lambda = 1.0045). extra_weight_init below is SOLVED for this value
                           # -- change one and the PKA rest point moves. Set to None to restore
                           # the dynamic pool. tau_ado/ado_release are then unused.
-                          "pin_ado": 0.062,
+                          # Adenosine CLAMPED. Tried unpinned (2026-09-10): training stalled
+                          # at the trivial constant (separation 0.0000 at step 1800, where the
+                          # working run was already at 0.4698), so the clamp went back on.
+                          # ado_release / tau_ado are INERT while this is set.
+                          "pin_ado": 0.256,
                           # SNc pacer cap raised 0.2 -> 0.5 (family-scoped; the shared
                           # CBT_RUNTIME_CONFIG value is untouched so cbt_loop / noSC keep 0.2).
                           # snc_pacer = snc_pacer_min + sigmoid(P_snc)*(max-min), so the cap is a
@@ -373,18 +414,56 @@ _CBT_FAMILY_STRUCTURE = {
                           # deliberately NOT set here -- pinning cortex would stop the cue driving
                           # the loop entirely and the model could not do the task.
                           "snc_pacer_max": 0.8,
-                          "tau_da": 20.0, "tau_ado": 200.0,
+                          "tau_da": 50.0, "tau_ado": 50.0,
                           # DA release gain: RAW (exc=sigmoid wraps it), effective
                           # sigmoid(0.1845) = 0.546. From the init search rank-1 config
                           # (tests/init_search/, tag ado0sweep_pinSNC_pinCTX).
                           # ado_release is INERT while pin_ado is set (the clamp overwrites the
                           # x_ado integrator every step); kept for the pin_ado=None path.
-                          "da_release": 0.1845, "ado_release": 1.1363,
+                          "da_release": 0.4973, "ado_release": 0.9892,  # raw = atanh(effective 0.460)
                           "da_max": 1.0, "ado_max": 1.0,
                           # de-saturate D1: base da_pka_gain=4.0 drove pkaD1 to 0.77 (D1
                           # pinned ~0.99, no dynamic range under the clip/exp init). 1.0
                           # rests pkaD1 ~0.5 (design target) with D1 headroom to gate.
-                          "da_pka_gain": 1.0},
+                          "da_pka_gain": 1.0,
+                          # --- striatal E/I (8-D init search, tag ei8d_bgnln_recttanh) ---
+                          # The 6 DA/adenosine gains only set PKA, which reaches the striatum
+                          # solely as the bg_nln slope a = 0.75/(1-b) -- a MULTIPLIER. It cannot
+                          # make a net-negative input positive, so no gain value revives a dead
+                          # pathway: the 6-D sweep capped at alive_both = 0.156 over 38 configs.
+                          # These two can, and with them alive_both reaches 0.999:
+                          #   stri_cross_scale -- scales BOTH D1<->D2 cross-projections
+                          #     (B_d1_d2, B_d2_d1) at init. D1 and D2 mutually inhibit, so
+                          #     weakening one side alone just moves activity across; both move
+                          #     together. 0.0 (delete collaterals) scored only 0.3% better, so
+                          #     this keeps them.
+                          #   stri_tonic -- constant added to the cortex->striatum init
+                          #     magnitudes (B_cU_d1, B_cU_d2): the tonic drive the loop lacks.
+                          # Applied to MAGNITUDES in init_params before the wrapper-aware
+                          # logit init, so exc(raw) reproduces the intended effective weight.
+                          "stri_cross_scale": 0.423, "stri_tonic": 0.158,
+                          # FLOOR on the four DA/adenosine PKA gains. exc = clip(tanh(w),0,None)
+                          # lets the optimiser walk a gain just past zero, where it is rectified
+                          # to exactly 0 AND loses its gradient permanently -- m_a1 did precisely
+                          # this in the seed-42 20k run (raw +0.036 -> -0.0085, effective 0.036 ->
+                          # 0.0000), deleting the A1R adenosine brake on D1 PKA entirely.
+                          # Applied as floor + (1-floor)*exc(w), NOT max(exc(w), floor): the
+                          # affine form keeps a nonzero gradient everywhere, whereas a hard max
+                          # would recreate the same dead zone one step lower.
+                          "m_gain_floor": 0.1},
+        # normalize_loop scales the 17 cortico-thalamic blocks but NOT B_snr_t_exc, the
+        # SNr->thalamus inhibition that opposes them (see its docstring: "every other
+        # projection (cue, BG, readout) is left alone"). At rho=1.0 that leaves the thalamic
+        # net input at -0.139 -- SNr row-sum -0.902 vs cortical drive +0.157 -- so the pool
+        # rectifies to EXACTLY zero on 95% of timesteps and the thalamic readout has nothing
+        # to read (C_thal gradient 8e-5 vs out_bias 8.8e-3; training flatlines on the best
+        # constant). NOTE the loop is NOT sub-critical: measured rho* ~= 0.99 here, and it
+        # FALLS as gain rises (tanh saturation). This is a DC operating-point fix, not a
+        # criticality fix -- 1.107 adds enough excitation to clear the rectifier threshold.
+        # Measured at 1.107: thalamus 99.7% alive (mean 0.255), cortex 0.384, D1 0.428,
+        # D2 0.576, rho* 0.915. The principled fix is to rebalance B_snr_t_exc against the
+        # cortical drive instead; this is the blunt version that unblocks training.
+        "extra_rnn": {"balanced_target_rho": 1.107},
         # PKA starts LOW (0.25), not 0.5: with the de-saturated loop, pka=0.5 sits in the
         # SATURATING bg_nln regime (D1/D2->~0.95) and, because pka rises fast but falls
         # slowly (tau_pka_fall>>rise), lingers there as a mid-trial spike. A low start
@@ -393,7 +472,7 @@ _CBT_FAMILY_STRUCTURE = {
         # rather than sitting flat. See tests/init_state_fix/.
         # 0.25 == pka_init_cap: the init search scores the trial with BOTH PKAs held at
         # 0.25, so start them there (tests/init_search/).
-        "extra_init": {"pka_d10": 0.25, "pka_d20": 0.25, "x_da0": 0.1, "x_ado0": 0.062},
+        "extra_init": {"pka_d10": 0.5, "pka_d20": 0.5, "x_da0": 0.1, "x_ado0": 0.062},
         # DA/adenosine PKA gains: rank-1 config of the init search under the CLAMPED-adenosine
         # model (tests/init_search/, tag ado0sweep_pinSNC_pinCTX; 168 configs, 6-D sweep where
         # ado0 replaced the -- inert under the clamp -- g_ado_release).
@@ -412,8 +491,25 @@ _CBT_FAMILY_STRUCTURE = {
         # above is the intended real mechanism for that; verify SNc actually leaves zero before
         # trusting the D1 side, since prod_d1 = max(G*m_d1*x_da - m_a1*pin_ado, 0) rectifies to
         # exactly 0 whenever x_da does.
-        "extra_weight_init": {"m_d1": 0.5884, "m_d2": -2.5268,
-                              "m_a1": -3.7054, "m_a2": 0.4853},
+        # RAW logits of the 8-D search winner (rank-1 with collaterals kept, cross>=0.15):
+        #   effective  m_d1 0.757  m_d2 0.177  m_a1 0.032  m_a2 0.502
+        #              g_da_release 0.574 (extra_runtime da_release)  ado0 0.093 (pin_ado)
+        #              cross 0.162  tonic 0.220
+        # Measured: alive_both 0.999, track_pka 1.000 (was 0.156 / 0.913 under the 6-D gains).
+        # RAW = atanh(effective): exc/inh are +-clip(tanh(w), 0, None), NOT sigmoid. Writing
+        # logit() here (as the pre-2026-09-10 values did) maps every NEGATIVE value to exactly
+        # 0 under tanh-clip, which is what silently zeroed m_d2 and m_a1.
+        # From the 8-D sweep re-run under tanh-clip WITH the pka_d2 saddle constraint
+        # (tests/init_search, tag ei8d_tanhclip_saddle, 173 configs).
+        #   effective: m_d1 0.602  m_d2 0.283  m_a1 0.036  m_a2 0.139
+        #              da_release 0.460   pin_ado 0.256   cross 0.423   tonic 0.158
+        #   measured: saddle_safe 1.000, alive_both 0.998, track_pka 1.000, pkaD2 0.188.
+        # NOT the top-ranked config (2.458 vs 2.467): ranks 1-6 are statistically tied while
+        # m_a2 spans 0.12-0.82, and m_a2 is the parameter implicated in BOTH collapses --
+        # training drove it to 0 in the model that trained stably and amplified it 0.502 ->
+        # 0.589 in the one that died at step 1400. This picks the low-m_a2 end of the tie.
+        "extra_weight_init": {"m_d1": 0.6963, "m_d2": 0.2909,
+                              "m_a1": 0.0360, "m_a2": 0.1399},
     },
 }
 
@@ -429,7 +525,7 @@ CORTICOTHALAMIC_RNN_CONFIG = {
     "n_t_exc": 10,   # homogenized to the CBT canonical (CBT_RNN_CONFIG)
     "n_t_inh": 5,    # homogenized to the CBT canonical (CBT_RNN_CONFIG)
     "n_output": 1,
-    "noise_std": 0.01,
+    "noise_std": 0.05,
     "g": 1.0,          # shared weight gain (fan-in-scaled)
     # Spectral-normalize the assembled loop at init to rho(M)=balanced_target_rho
     # (reuses loop_init.normalize_loop, same 17-block structure as the CBT families).
@@ -489,6 +585,10 @@ def rnn_config_for(family):
         cfg = dict(CBT_RNN_CONFIG)
         for k in _CBT_FAMILY_STRUCTURE[family]["drop_rnn"]:
             cfg.pop(k, None)
+        # Family-scoped RNN_CONFIG overrides, same shape as extra_runtime above. Lets one
+        # family retune a canonical value (e.g. balanced_target_rho) without moving it for
+        # the others.
+        cfg.update(_CBT_FAMILY_STRUCTURE[family].get("extra_rnn", {}))
         return cfg
     return dict(_ARCH_RNN_CONFIG[family])
 
@@ -547,6 +647,7 @@ def for_family(family):
     ns.TASK_CONFIG = dict(TASK_CONFIG)
     ns.PAVLOVIAN_CONFIG = dict(PAVLOVIAN_CONFIG)
     ns.TRAINING_CONFIG = dict(TRAINING_CONFIG)
+    ns.SUPERVISED_THAL_CONFIG = dict(SUPERVISED_THAL_CONFIG)
     ns.TEST_CONFIG = dict(TEST_CONFIG)
     ns.PRETRAIN_TASK_CONFIG = dict(PRETRAIN_TASK_CONFIG)
     ns.PRETRAINING_CONFIG = dict(PRETRAINING_CONFIG)

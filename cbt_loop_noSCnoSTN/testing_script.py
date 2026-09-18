@@ -22,6 +22,24 @@ import plotting_functions as pf
 import test_pnr
 import opto_script
 
+# Which bundle main() analyses. cfg.params_path() (params_shaped.pkl) is the family
+# default, but that bundle's readout is silent -- every plot comes out flat -- and its
+# saved config predates the nt_mode runtime key. params_supervised_thal.pkl is the
+# supervised-thalamic run: alive, current schema, readout_source="thalamus".
+# Set to None to fall back to the family default.
+PARAMS_FILENAME = "params_supervised_thal.pkl"
+
+# Where a "response" is read from.
+#   "actions" -- Bernoulli samples of the output (the REINFORCE path's policy).
+#   "output"  -- threshold the raw readout: anything above RESPONSE_THRESHOLD is a response.
+# For a SUPERVISED / thalamic-readout bundle "actions" is meaningless: the baseline is a
+# deliberate 0.25, so a sampled action fires within ~4 timesteps by chance (measured: 24.5%
+# of PRE-CUE timesteps carry an action), which is why mean success reads 1.0 even for a model
+# emitting a flat 0.5, why mean response time reads ~0.03 s against a 300-step delay, and why
+# "binned responses" dies with empty bins. Thresholding the output measures the model instead.
+RESPONSE_SOURCE = "output"     # "output" | "actions"
+RESPONSE_THRESHOLD = 0.5
+
 
 def _build_weight_matrix(params):
     """Assemble the full effective weight matrix including input and output lines."""
@@ -119,11 +137,15 @@ def _build_weight_matrix(params):
     # source columns (row-sum = effective scalar gain).
     m_floor, m_cap = 0.1, 0.5
     if "m_d1" in params:
-        g_d1 = m_floor + np.logaddexp(0.0, np.array(params["m_d1"]))  # (n_d1,)
+        # m_d1/m_d2 are SCALARS (one shared gain per population, see cbt_rnn init_params),
+        # not (n_d1,) vectors as the old shape comment assumed -- indexing a 0-d array with
+        # [:, None] raises "invalid index to scalar variable". atleast_1d makes the scalar
+        # case a (1,) array that broadcast_to expands, and leaves a real vector untouched.
+        g_d1 = np.atleast_1d(m_floor + np.logaddexp(0.0, np.array(params["m_d1"])))
         place("D1", "SNc",
               np.broadcast_to(g_d1[:, None], (n_d1, n_snc)) / n_snc)
     if "m_d2" in params:
-        g_d2 = m_cap / (1.0 + np.exp(-np.array(params["m_d2"])))      # (n_d2,)
+        g_d2 = np.atleast_1d(m_cap / (1.0 + np.exp(-np.array(params["m_d2"]))))
         place("D2", "SNc",
               -np.broadcast_to(g_d2[:, None], (n_d2, n_snc)) / n_snc)
     # Adenosine: one tonic level k_a drives every SPN through per-neuron
@@ -131,12 +153,15 @@ def _build_weight_matrix(params):
     # The depicted edge is the effective scalar contribution m_a · k_a.
     m_floor = 0.1
     k_a = max(0.0, np.tanh(float(np.array(params.get("k_a", 1.0)))))
+    # m_a1/m_a2 are SCALARS like m_d1/m_d2 above, so reshape(n_d1, 1) on a size-1 array
+    # raises; broadcast_to expands the shared gain across the pool and is a no-op for a
+    # genuine per-neuron vector.
     if "m_a1" in params:
-        g_a1 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a1"])))  # (n_d1,)
-        place("D1", "Adenosine", -(g_a1 * k_a).reshape(n_d1, 1))
+        g_a1 = np.atleast_1d(m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a1"]))))
+        place("D1", "Adenosine", -np.broadcast_to((g_a1 * k_a)[:, None], (n_d1, 1)))
     if "m_a2" in params:
-        g_a2 = m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a2"])))  # (n_d2,)
-        place("D2", "Adenosine", (g_a2 * k_a).reshape(n_d2, 1))
+        g_a2 = np.atleast_1d(m_floor + np.maximum(0.0, np.tanh(np.array(params["m_a2"]))))
+        place("D2", "Adenosine", np.broadcast_to((g_a2 * k_a)[:, None], (n_d2, 1)))
     place("GPe",      "D2",       cbtl.inh(params["B_d2_gpe"]))
     place("GPe",      "Cortex",   _from_cU(cbtl.exc(params["B_cU_gpe"])))  # cU → GPe (exc)
     place("GPe",      "GPe",      cbtl.inh(params["J_gpe"]))
@@ -254,8 +279,13 @@ def _match_input_channels(inputs, params):
     return inputs[..., :n_expected]
 
 
-def _response_times_from_actions(actions, starts, t_cue, threshold=0.5):
-    n_seeds, n_conditions = actions.shape[:2]
+def _response_times(signal, starts, t_cue, threshold=RESPONSE_THRESHOLD):
+    """First crossing of `threshold` after cue offset, in seconds; NaN if never.
+
+    `signal` is (n_seeds, n_conditions, T, 1) -- either sampled actions or the raw output.
+    """
+    n_seeds, n_conditions = signal.shape[:2]
+    actions = signal
     response_times = jnp.full((n_seeds, n_conditions), jnp.nan)
     for seed_idx in range(n_seeds):
         for cond_idx in range(n_conditions):
@@ -267,11 +297,17 @@ def _response_times_from_actions(actions, starts, t_cue, threshold=0.5):
     return response_times
 
 
+# back-compat alias for any caller still using the old name
+_response_times_from_actions = _response_times
+
+
 def _load_bundle():
     """Load params + config, rebuilding config for legacy (params-only) bundles."""
-    params_path = cfg.params_path()
+    params_path = (cfg.params_path().with_name(PARAMS_FILENAME)
+                   if PARAMS_FILENAME else cfg.params_path())
     if not params_path.exists():
         raise FileNotFoundError(f"Missing {params_path}. Run training_script.py first.")
+    print(f"[testing_script] loading {params_path.name}")
 
     with params_path.open("rb") as f:
         bundle = pkl.load(f)
@@ -397,6 +433,97 @@ def load_pd_bundle(train_if_missing=True, num_iters=2000, save_path=None):
     return train_pd_experiment(num_iters=num_iters, save_path=save_path)
 
 
+def _plot_objective(all_ys, starts, params, config):
+    """Plot the TRAINING objective evaluated on the loaded bundle.
+
+    Unlike pf.plot_loss_function / plot_loss_function_adaptive -- which are idealized
+    schematics of the reward window and never touch the params -- this measures the
+    objective the network is actually scored on, using the same soft step target that
+    train_supervised_thal.py optimizes (stmt.selftimed_step_target, built here for the
+    TEST cue onsets rather than the training ones).
+
+    Three panels:
+      1. mean output vs target, aligned to cue onset, step window shaded
+      2. per-timestep squared error -- the integrand of the objective
+      3. objective per cue-onset condition -- does it generalize across start times?
+
+    Note the pkl stores only params + config, never the loss history, so this is the
+    objective at the final weights, not a training curve. To get a curve, log the
+    losses returned by stmt.fit_rnn_supervised.
+    """
+    sup = cfg.SUPERVISED_THAL_CONFIG
+    t = cfg.TASK_CONFIG
+    _, targets, masks = stmt.selftimed_step_target(
+        T_start=starts, T_cue=t["t_cue"], T_wait=t["t_wait"],
+        T_movement=t["t_movement"], T=t["t_total"],
+        lo=sup["target_lo"], hi=sup["target_hi"],
+        hold=sup["hold"], delay=sup["delay"],
+    )
+    ys = np.asarray(all_ys)[..., 0]              # (n_seeds, n_cond, T)
+    tg = np.asarray(targets)[..., 0]             # (n_cond, T)
+    mk = np.asarray(masks)
+    mk = mk[..., 0] if mk.ndim == 3 else mk      # (n_cond, T)
+
+    sq = (ys - tg[None]) ** 2
+    mse = float((sq * mk[None]).sum() / (mk.sum() * ys.shape[0]))
+    eps = 1e-7
+    pc = np.clip(ys, eps, 1 - eps)
+    bce_t = -(tg[None] * np.log(pc) + (1 - tg[None]) * np.log(1 - pc))
+    bce = float((bce_t * mk[None]).sum() / (mk.sum() * ys.shape[0]))
+
+    # Align every condition to its own cue onset so the step lines up across starts.
+    starts_np = np.asarray(starts).astype(int)
+    pre, post = 50, int(sup["delay"]) + int(sup["hold"]) + 100
+    ys_al, tg_al, sq_al = [], [], []
+    for c, s0 in enumerate(starts_np):
+        a, b = s0 - pre, s0 + post
+        if a < 0 or b > ys.shape[2]:
+            continue
+        ys_al.append(ys[:, c, a:b])
+        tg_al.append(np.broadcast_to(tg[c, a:b], ys[:, c, a:b].shape))
+        sq_al.append(sq[:, c, a:b])
+    ys_al = np.concatenate(ys_al, axis=0)
+    tg_al = np.concatenate(tg_al, axis=0)
+    sq_al = np.concatenate(sq_al, axis=0)
+    tt = np.arange(-pre, post)
+
+    fig, axs = plt.subplots(1, 3, figsize=(9.5, 2.6))
+
+    ax = axs[0]
+    m, sd = ys_al.mean(0), ys_al.std(0)
+    ax.axvspan(sup["delay"], sup["delay"] + sup["hold"], color="green", alpha=0.12)
+    ax.axvline(0, color="red", lw=0.8, alpha=0.6)
+    ax.plot(tt, tg_al.mean(0), c="k", ls="--", lw=1.2, label="target")
+    ax.plot(tt, m, c="darkgreen", lw=1.2, label="output")
+    ax.fill_between(tt, m - sd, m + sd, color="darkgreen", alpha=0.2, lw=0)
+    ax.set_xlabel("timesteps from cue onset")
+    ax.set_ylabel("output")
+    ax.legend(frameon=False, fontsize=7)
+
+    ax = axs[1]
+    ax.axvspan(sup["delay"], sup["delay"] + sup["hold"], color="green", alpha=0.12)
+    ax.axvline(0, color="red", lw=0.8, alpha=0.6)
+    ax.plot(tt, sq_al.mean(0), c="firebrick", lw=1.0)
+    ax.set_xlabel("timesteps from cue onset")
+    ax.set_ylabel("squared error")
+
+    ax = axs[2]
+    per_cond = (sq * mk[None]).sum(axis=(0, 2)) / (mk.sum(axis=1) * ys.shape[0])
+    ax.bar(np.arange(len(starts_np)), per_cond, color="steelblue")
+    ax.set_xticks(np.arange(len(starts_np)))
+    ax.set_xticklabels([str(int(x)) for x in starts_np], fontsize=6)
+    ax.set_xlabel("cue onset (timestep)")
+    ax.set_ylabel("MSE")
+
+    trained_on = sup["loss_type"]
+    fig.suptitle(f"objective on loaded bundle -- MSE {mse:.5f}   BCE {bce:.5f} "
+                 f"(trained on {trained_on})", fontsize=8, y=0.99)
+    plt.tight_layout(rect=[0, 0, 1, 0.90])
+    pf.save_fig(fig, "objective_function")
+    print(f"   objective: MSE={mse:.6f}  BCE={bce:.6f}  (training loss_type={trained_on})")
+    return mse, bce
+
+
 def main():
     params, config = _load_bundle()
 
@@ -413,14 +540,18 @@ def main():
     )
 
     # Derived quantities shared by several plots.
-    response_times = _response_times_from_actions(all_actions, starts, cfg.TASK_CONFIG["t_cue"])
+    use_output = RESPONSE_SOURCE == "output"
+    resp_signal = all_ys if use_output else all_actions
+    print(f"[response] source={RESPONSE_SOURCE} threshold={RESPONSE_THRESHOLD}")
+    response_times = _response_times(resp_signal, starts, cfg.TASK_CONFIG["t_cue"],
+                                     RESPONSE_THRESHOLD)
     valid_rts = response_times[~jnp.isnan(response_times)]
     d1d2_ratio = cbtl.get_d1_d2_ratio(all_xs, 100, 300, avg_time=True, remove_outliers=False)
 
     target_2d = targets[..., 0]
-    action_2d = all_actions[..., 0]
+    resp_2d = resp_signal[..., 0]
     in_target = target_2d[None, ...] > 0.5
-    success = jnp.any((action_2d > 0.5) & in_target, axis=2)
+    success = jnp.any((resp_2d > RESPONSE_THRESHOLD) & in_target, axis=2)
 
     print("ys shape:", all_ys.shape)
     print("actions shape:", all_actions.shape)
@@ -439,7 +570,8 @@ def main():
     _safe("output activity", pf.plot_output, all_ys)
     _safe("activity by area", pf.plot_activity_by_area, all_xs)
     _safe("cue-aligned activity", pf.plot_cue_algn_activity, all_xs, ys=all_ys)
-    _safe("binned responses", pf.plot_binned_responses, all_ys, all_xs, None, all_actions)
+    _safe("binned responses", pf.plot_binned_responses, all_ys, all_xs, None,
+          None if use_output else all_actions)
     if valid_rts.size > 0:
         _safe("response time distributions", pf.plot_response_times, valid_rts)
 
@@ -450,6 +582,9 @@ def main():
           pf.plot_d1d2ratio_slope_correlogram, all_xs, response_times)
     _safe("dSPN-iSPN vs response-time correlogram",
           pf.plot_ratio_rt_correlogram, d1d2_ratio, response_times)
+
+    # --- Objective function on the loaded bundle -----------------------
+    _safe("objective function", _plot_objective, all_ys, starts, params, config)
 
     # --- Static schematic plots ----------------------------------------
     _safe("loss function schematic", pf.plot_loss_function)
@@ -467,4 +602,12 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse
+    _ap = argparse.ArgumentParser(description="run the analysis suite on the loaded bundle")
+    _ap.add_argument("--response-source", choices=("output", "actions"), default=RESPONSE_SOURCE,
+                     help="read responses from the thresholded readout, or from sampled actions")
+    _ap.add_argument("--response-threshold", type=float, default=RESPONSE_THRESHOLD)
+    _a = _ap.parse_args()
+    RESPONSE_SOURCE = _a.response_source
+    RESPONSE_THRESHOLD = _a.response_threshold
     main()

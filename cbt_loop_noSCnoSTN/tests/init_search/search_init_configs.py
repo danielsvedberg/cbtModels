@@ -28,10 +28,11 @@ SCORE (stage 1) -- objective: pka_d1 = pka_d2 = PKA_TARGET (0.25) for the whole 
 at_target(tc) = mean_t of a tent: 1 within +-PKA_TOL of PKA_TARGET, ramping to 0 at
 +-PKA_WIDTH -- so a PKA trace is rewarded only for STAYING AT 0.25, and any drift up
 (toward saturation) or down (toward dead) is punished symmetrically.
-  track_pka  = min(at_target pkaD1, at_target pkaD2)  # BOTH PKAs must hold the target
+  track_pka  = mean(at_target pkaD1, at_target pkaD2)  # both sides visible to the ranking
+  track_worst= min(at_target pkaD1, at_target pkaD2)   # guard: can't abandon one pathway
   alive_both = min(band D1, band D2)          # guard: neither pathway dead/saturated
   regime_nm  = mean(nsr DA, nsr Adenosine)    # drivers: not saturated + have dynamic range
-  score = 1.0*track_pka + 0.5*alive_both + 0.25*regime_nm
+  score = 1.0*track_pka + 0.3*track_worst + 0.5*alive_both + 0.25*regime_nm
 band(tc) = mean_t of a trapezoid that is 1 in [0.15,0.85] and ramps to 0 at 0 and 1.
 (x_da rests low & phasic, so DA/Ado are scored on "not saturated + has range", not on band.)
 Entries in an existing results file that were scored under an older objective are re-scored
@@ -68,7 +69,8 @@ import self_timed_movement_task as stmt
 
 cfg = C.for_family("cbt_loop_noSCnoSTN")
 AREAS = list(cbtl.STATE_AREA_ORDER)
-PARAM_NAMES = ["m_d1", "m_d2", "m_a1", "m_a2", "g_da_release", "ado0"]
+PARAM_NAMES = ["m_d1", "m_d2", "m_a1", "m_a2", "g_da_release", "ado0",
+               "cross", "tonic"]
 # ado0 REPLACES g_ado_release in the sweep. It is NOT a sigmoid-wrapped gain: it is the
 # adenosine STATE level, set as x_ado0 AND as config["pin_ado"], so x_ado is CLAMPED there for
 # the whole trial (see _override). Each config therefore asks "what tonic adenosine level, with
@@ -87,7 +89,18 @@ RANGES = {"m_d1": (0.5, 0.98), "m_d2": (0.05, 0.7), "m_a1": (0.01, 0.1),
           # ado0 = the clamped tonic adenosine level, a STATE in [0,1]. Spans well below and
           # above the 0.1 currently in config_script. prod_d2 = m_a2*ado0 - G*m_d2*x_da, so
           # ado0 acts multiplicatively with m_a2 -> log-sampled like the gains.
-          "ado0": (0.02, 0.9)}
+          "ado0": (0.02, 0.9),
+          # --- striatal E/I, added after the 6-gain sweep hit alive_both <= 0.156 ---
+          # The six gains above only set PKA, which enters the striatum solely as the
+          # bg_nln slope a = 0.75/(1-b). They cannot change whether D1/D2 receive net
+          # positive input, so no value of them can revive a dead pathway. These two can:
+          #   cross -- scales BOTH cross-projections (B_d1_d2, B_d2_d1). D1 and D2
+          #            mutually inhibit, so weakening one side alone just moves activity
+          #            across; both must move together (measured: alive_both 0.048 -> 0.516
+          #            going cross 1.0 -> 0.0 with tonic 0.15).
+          #   tonic -- constant added to every EFFECTIVE cortex->striatum weight
+          #            (B_cU_d1, B_cU_d2); the tonic-drive fix for the silent loop.
+          "cross": (0.0, 1.0), "tonic": (0.0, 0.25)}
 LOG_SAMPLE = {"m_d1", "m_d2", "m_a1", "m_a2", "ado0"}   # sampled log-uniform
 # What often matters is the BALANCE within a gain pair, not either absolute value. Two kinds:
 # ACROSS pathways (D1-side vs D2-side partner of the same messenger) and WITHIN a pathway
@@ -99,20 +112,28 @@ RATIO_PAIRS = (("m_d1", "m_d2"), ("m_a1", "m_a2"),
                # trade off directly against each other.
                ("m_a2", "ado0"), ("m_a1", "ado0"))
 W_PKA, W_ALIVE, W_NM = 1.0, 0.5, 0.25   # holding PKA at target is now the primary objective
+W_WORST = 0.3         # weight on the WORSE of the two PKA sides (see _score_from_tc)
+W_SADDLE = 0.5        # weight on staying clear of the pka_d2 saddle
+PKA_D2_SADDLE = 0.267 # unstable fixed point of pka_d2; above it the run destabilises
+SADDLE_MARGIN = 0.03  # full credit below SADDLE-MARGIN, zero credit above SADDLE+MARGIN
 TC_AREAS = ("D1", "D2", "DA", "Adenosine", "pkaD1", "pkaD2")
-PKA_TARGET = 0.25      # THE GOAL: pka_d1 and pka_d2 should sit here all trial
+# LOWERED 0.25 -> 0.20. The pka_d2 saddle sits at 0.267 (lambda = 1.0045), so a target of
+# 0.25 parks the search 0.017 from the fold. Measured: the config that trained STABLY had
+# pkaD2 at 0.108 (range 0.034-0.250, well clear); the one that COLLAPSED sat at 0.271,
+# straddling the saddle with only 0.056 of range. 0.20 leaves real clearance.
+PKA_TARGET = 0.20      # rest point for pka_d1 / pka_d2
 PKA_TOL = 0.05         # full credit within +-TOL of the target
 PKA_WIDTH = 0.15       # zero credit beyond +-WIDTH
 PKA0 = PKA_TARGET      # force the PKA init state (pka_d10/pka_d20) to start on target
 PIN_SNC = 0.1          # clamp every SNc unit to this rate for the whole trial (None = free)
 PIN_CTX = 0.1          # clamp every cortical unit (cU, cL, c_inh) likewise
-OBJECTIVE = f"pka_target_{PKA_TARGET}"   # stamped on metrics; stale entries get re-scored
+OBJECTIVE = f"pka_target_{PKA_TARGET}_meanmin_saddle"   # stamped on metrics; stale entries get re-scored
 # Raw production needed to hold pka* at PKA_TARGET: pka* = 9P/(1+9P) for tau_f/tau_r = 9, so
 # P_req = p / ((tau_f/tau_r)(1-p)). With x_ado pinned and x_da ~ 0, prod_d2 = m_a2*ado0, so the
 # exact-solution locus in the (m_a2, ado0) plane is the hyperbola m_a2*ado0 = P_req.
 P_REQ = PKA_TARGET / ((cfg.RUNTIME_CONFIG["tau_pka_fall"] /
                        cfg.RUNTIME_CONFIG["tau_pka_rise"]) * (1.0 - PKA_TARGET))
-TAG = "ado0sweep_pinSNC_halfnormal"  # output suffix: 7-D sweep (6 gains + ado0) under nln=max(0,tanh(x)),
+TAG = "ei8d_tanhclip_saddle"  # output suffix: 7-D sweep (6 gains + ado0) under nln=max(0,tanh(x)),
                             # with x_ado CLAMPED at the sampled ado0 (config["pin_ado"]).
                             # Earlier tags: pka0_0.25          -- nln=sigmoid, dynamic adenosine
                             #               pka0_0.25_recttanh -- nln=rect-tanh, dynamic adenosine
@@ -142,6 +163,20 @@ def at_target(tc, target=PKA_TARGET, tol=PKA_TOL, width=PKA_WIDTH):
     Symmetric, so drifting up (toward saturation) and down (toward dead) cost the same."""
     d = np.abs(np.asarray(tc) - target)
     return float(np.clip((width - d) / (width - tol), 0.0, 1.0).mean())
+
+
+def saddle_safe(tc, saddle=None, margin=None):
+    """Fraction of the trial pka_d2 spends CLEAR of its unstable fixed point.
+
+    1.0 while pka_d2 <= saddle - margin, ramping linearly to 0 at saddle + margin. The
+    existing at_target tent is symmetric and so is indifferent to WHICH side of 0.25 the
+    trace drifts; this term is one-sided, because drifting up past 0.267 is qualitatively
+    different -- it crosses a lambda>1 fold and the run does not come back.
+    """
+    saddle = PKA_D2_SADDLE if saddle is None else saddle
+    margin = SADDLE_MARGIN if margin is None else margin
+    d = (saddle + margin) - np.asarray(tc)
+    return float(np.clip(d / (2.0 * margin), 0.0, 1.0).mean())
 
 
 def not_sat_range(tc, sat=0.85, span=0.1):
@@ -179,9 +214,30 @@ def _override(seed, vals, n_input):
             a = float(np.clip(v, 0.0, 1.0))
             p["x_ado0"] = jnp.full_like(jnp.asarray(p["x_ado0"]), a)
             c["pin_ado"] = a
+        elif name in ("cross", "tonic"):
+            # Matrix knobs, applied WRAPPER-AWARE: raw weights are logits and the forward
+            # applies sigmoid, so transform the EFFECTIVE weight and re-logit it. That keeps
+            # the wrapper-aware init of commit 4fa9fc1 intact.
+            def _relogit(arr, fn):
+                # tanh-clip wrapper: effective = clip(tanh(raw), 0, None), so invert with
+                # arctanh, not logit. Clipped to keep arctanh finite.
+                eff = np.clip(np.tanh(np.asarray(arr)), 0.0, 1.0 - 1e-6)
+                eff = np.clip(fn(eff), 1e-6, 1.0 - 1e-6)
+                return jnp.asarray(np.arctanh(eff))
+            if name == "cross":                       # scale both D1<->D2 projections
+                sc = float(np.clip(v, 0.0, 1.0))
+                for k in ("B_d1_d2", "B_d2_d1"):
+                    p[k] = _relogit(p[k], lambda e, sc=sc: sc * e)
+            else:                                     # tonic cortical drive to both pathways
+                tn = float(np.clip(v, 0.0, 0.5))
+                for k in ("B_cU_d1", "B_cU_d2"):
+                    p[k] = _relogit(p[k], lambda e, tn=tn: e + tn)
         else:
             e = float(np.clip(v, 1e-3, 1.0 - 1e-3))   # v is the EFFECTIVE gain in (0,1)
-            p[name] = jnp.array(np.log(e / (1.0 - e)))  # raw = logit(effective); fwd sigmoids it
+            # raw = atanh(effective). exc/inh are now +-clip(tanh(w), 0, None), NOT sigmoid.
+            # Writing logit() here (the old code) is what silently zeroed m_d2 and m_a1 in
+            # config_script: tanh-clip maps every NEGATIVE logit to exactly 0.
+            p[name] = jnp.array(np.arctanh(e))
     # SNc and all three cortical pools CLAMPED (see PIN_SNC/PIN_CTX): under max(0,tanh(x))
     # both rectify to exactly 0 at rest (SNc's pacer is capped at 0.2 against ~0.5 of D2+GPe
     # inhibition; cortex has no pacer at all), which zeroes x_da and makes pka_d1 unreachable
@@ -200,11 +256,21 @@ def _score_from_tc(tc_avg, means):
     trk = {a: at_target(tc_avg[a]) for a in ("pkaD1", "pkaD2")}
     dev = {a: float(np.abs(np.asarray(tc_avg[a]) - PKA_TARGET).mean()) for a in ("pkaD1", "pkaD2")}
     nm = {a: not_sat_range(tc_avg[a]) for a in ("DA", "Adenosine")}
-    track_pka = min(trk["pkaD1"], trk["pkaD2"])   # BOTH PKAs must hold PKA_TARGET
+    # track_pka was min(pkaD1, pkaD2). That MASKS the D2 side whenever pkaD1 is the
+    # worse of the two: min() then returns the D1 value no matter what D2 does, so D2
+    # quality is invisible to the ranking and score degenerates to tracking alive_both
+    # (measured corr +0.96; configs with a perfect D2 ranked 106/168). Score the MEAN so
+    # both sides are visible, and keep the min as a separate, smaller guard term so a
+    # config still cannot win by abandoning one pathway entirely.
+    track_pka = 0.5 * (trk["pkaD1"] + trk["pkaD2"])
+    track_worst = min(trk["pkaD1"], trk["pkaD2"])
     alive_both = min(b["D1"], b["D2"])
     regime_nm = 0.5 * (nm["DA"] + nm["Adenosine"])
-    score = W_PKA * track_pka + W_ALIVE * alive_both + W_NM * regime_nm
-    metrics = dict(score=score, track_pka=track_pka, alive_both=alive_both, regime_nm=regime_nm,
+    saddle = saddle_safe(tc_avg["pkaD2"])
+    score = (W_PKA * track_pka + W_WORST * track_worst
+             + W_ALIVE * alive_both + W_NM * regime_nm + W_SADDLE * saddle)
+    metrics = dict(score=score, track_pka=track_pka, track_worst=track_worst,
+                   saddle_safe=saddle, alive_both=alive_both, regime_nm=regime_nm,
                    objective=OBJECTIVE, reward=None,
                    **{f"band_{a}": b[a] for a in b}, **{f"track_{a}": trk[a] for a in trk},
                    **{f"dev_{a}": dev[a] for a in dev}, **{f"nm_{a}": nm[a] for a in nm},
@@ -466,8 +532,9 @@ def build_report(results):
              f"with x_da~0 the D2 solution locus is m_a2*ado0 = P_req.\n",
              f"{len(results)} configs scored on how well the fresh-init PKA traces HOLD "
              f"{PKA_TARGET} for the whole trial ({len(validated)} validated by full training).\n",
-             f"`score = 1.0*track_pka + 0.5*alive_both + 0.25*regime_nm`, where `track_pka` is the "
-             f"min over pkaD1/pkaD2 of the time-mean tent (1 within +-{PKA_TOL} of {PKA_TARGET}, "
+             f"`score = 1.0*track_pka + 0.3*track_worst + 0.5*alive_both + 0.25*regime_nm`, where "
+             f"`track_pka` is the MEAN and `track_worst` the MIN over pkaD1/pkaD2 "
+             f"of the time-mean tent (1 within +-{PKA_TOL} of {PKA_TARGET}, "
              f"0 beyond +-{PKA_WIDTH}). PKA init state forced to pka_d10=pka_d20={PKA0}.\n",
              "## Best config\n", "```",
              *[f"{n} = {top[0]['vals'][i]:.3f}" for i, n in enumerate(PARAM_NAMES)],

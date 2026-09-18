@@ -1,0 +1,13 @@
+[balanced_init] cortico-thalamic loop rho(M): 1.516 -> 1.000 (target 1.0, tau=7.0)
+[supervised-thal] readout=thalamus  target 0.25->0.75 for 50 steps, opening 300 steps after cue onset
+[supervised-thal] task=self-timed  inputs (100, 1000, 1)  loss=mse  iters=10000
+step 200, loss: 0.011883, sup_loss: 0.011883, acc: 0.9500, in_window: 0.2734, off_window: 0.2735, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011876, sup_loss: 0.011876, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1600, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1800, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2000, loss: 0.011875, sup_loss: 0.011875, acc: 0.9500, in_window: 0.2750, off_window: 0.2750, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000

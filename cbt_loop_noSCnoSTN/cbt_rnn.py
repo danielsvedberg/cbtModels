@@ -4,6 +4,7 @@ import sys
 
 import jax.numpy as jnp
 import jax.random as jr
+import optax
 from jax import lax, vmap
 from jax.nn import sigmoid, tanh, softplus
 
@@ -205,6 +206,14 @@ def init_params(rng_key, n_input):
         "B_cL_med": (1 / (n_c_L)) * _mag(skeys[14], (n_med // 2, n_c_L)),  # cL → medulla E (exc)
         "B_snr_med": (1 / (n_snr)) * _mag(skeys[41], (n_med // 2, n_snr)),  # SNr → Medulla E (inh)
         "C_med": (1 / (n_med // 2)) * _mag(skeys[15], (n_output, n_med // 2)),  # readout (exc)
+        # Thalamic readout weights, used when config["readout_source"] == "thalamus".
+        # Reads the thalamic EXCITATORY relay pool only -- t_inh is a local (TRN-like)
+        # interneuron pool that projects nowhere outside the area, matching how the rest
+        # of the model treats thalamus (b_t_cU / b_t_c_inh both read x_t_exc). Wrapped in
+        # exc() in the forward, so the effective weights are sigmoid(raw) and therefore
+        # STRICTLY POSITIVE and bounded (0,1) -- training cannot flip a sign. 2-D, so the
+        # wrapper-aware logit init below applies and sigmoid(raw) reproduces this magnitude.
+        "C_thal": (1 / n_t_exc) * _mag(skeys[59], (n_output, n_t_exc)),  # readout (exc)
         #"rb": jnp.abs((1 / (n_med)) * jr.normal(skeys[16], (n_output,))),
         # Output readout gain/bias: y = sigmoid(out_gain*(c_med@x_med_E) + out_bias).
         # out_bias = logit(0.25) gives a nonzero resting response prob so the policy
@@ -287,6 +296,20 @@ def init_params(rng_key, n_input):
     # forward, so this touches connectivity matrices only (2-D; the scalar DA/adenosine/pacer
     # gains are excluded). If exc is linear (clip/abs, exc(0)=0) the magnitudes are already the
     # effective weights, so this is skipped. See tests/loop_desaturation/.
+    # --- striatal E/I shaping (see config_script stri_cross_scale / stri_tonic) ---
+    # Applied to the intended MAGNITUDES, before the logit init below, so exc(raw) ends up
+    # reproducing the shaped effective weight. cross scales both D1<->D2 cross-projections
+    # (they must move together -- weakening one side alone just shifts activity between the
+    # pathways); tonic adds a constant cortex->striatum drive to both.
+    _cross = _rt.get("stri_cross_scale", None)
+    if _cross is not None and _cross != 1.0:
+        for _k in ("B_d1_d2", "B_d2_d1"):
+            params[_k] = jnp.asarray(params[_k]) * _cross
+    _tonic = _rt.get("stri_tonic", 0.0)
+    if _tonic:
+        for _k in ("B_cU_d1", "B_cU_d2"):
+            params[_k] = jnp.abs(jnp.asarray(params[_k])) + _tonic
+
     if float(stmt.exc(jnp.asarray(0.0))) > 0.25:
         _gain_keys = {"m_d1", "m_d2", "m_a1", "m_a2", "g_da_release", "g_ado_release",
                       "P_gpe", "P_snc", "P_snr"}
@@ -297,6 +320,35 @@ def init_params(rng_key, n_input):
                 params[_k] = jnp.log(_m / (1.0 - _m))
 
     return params, config
+
+
+# Trainable INITIAL-STATE parameters (the network's state at t=0). These are ordinary
+# params, so by default the optimiser tunes them -- which has bitten this model before:
+# x_da0 trains negative and the [0,1] clip rectifies the initial dopamine to exactly 0, and
+# pka_d10/d20 train ABOVE pka_init_cap so the clip silently discards the learned value.
+# freeze_init_state_optimizer() wraps an optimiser so their updates are zeroed, pinning every
+# area's t=0 state at the config_script CBT_INIT_STATE values.
+INIT_STATE_KEYS = (
+    "x_c0_U", "x_c0_L", "x_c0_inh", "x_d10", "x_d20", "x_snc0", "x_gpe0", "x_snr0",
+    "x_t0_exc", "x_t0_inh", "x_med0", "x_da0", "x_ado0", "pka_d10", "pka_d20",
+)
+
+
+def init_state_mask(params):
+    """Pytree of bools, True for every initial-state param present in `params`."""
+    return {k: (k in INIT_STATE_KEYS) for k in params}
+
+
+def freeze_init_state_optimizer(optimizer, params):
+    """Wrap `optimizer` so INIT_STATE_KEYS receive zero updates (frozen at their init values).
+
+    Applied AFTER the inner optimiser, so adam/adamw statistics are untouched and only the
+    emitted update is zeroed. Returns `optimizer` unchanged if no init-state params exist.
+    """
+    mask = init_state_mask(params)
+    if not any(mask.values()):
+        return optimizer
+    return optax.chain(optimizer, optax.masked(optax.set_to_zero(), mask))
 
 
 def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None):
@@ -376,9 +428,19 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     j_d2 = no_autapse(inh(params["J_d2"]))
     j_gpe = no_autapse(inh(params["J_gpe"]))
 
-    p_snr = exc(params["P_snr"])
-    p_snc = exc(params["P_snc"])
-    p_gpe = exc(params.get("P_gpe", jnp.zeros(j_gpe.shape[0])))
+    # Pacemaker biases are used RAW. They feed sigmoid(.) in the pacer formulas below, and
+    # sigmoid already maps R -> (0,1), so wrapping them in exc() first was a DOUBLE
+    # nonlinearity: exc = clip(tanh(w),0,None) forces the argument >= 0, and sigmoid(x>=0)
+    # >= 0.5, so the pacer could only ever reach the TOP HALF of [min,max] and could never
+    # start low. Measured for SNr: attainable range 0.475-0.648 out of an intended 0.10-0.85,
+    # while SNr needs ~0.70 just to overcome D1+GPe inhibition (-0.695) and leave zero --
+    # structurally unreachable, hence SNr silent on 82-88% of timesteps. Worse, any unit with
+    # P <= 0 had exc() return exactly 0, killing its gradient and freezing its pacer.
+    # Training was already pushing the right way (all 8 P_snr units rose during training) but
+    # the squash converted a 36% parameter increase into a 2% pacer change.
+    p_snr = params["P_snr"]
+    p_snc = params["P_snc"]
+    p_gpe = params.get("P_gpe", jnp.zeros(j_gpe.shape[0]))
 
     # Cue → cortex (all three pools).
     b_cue_cU = exc(params["B_cue_cU"])
@@ -416,12 +478,17 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # m_floor_a2 preserves the A2R drive that keeps pka_d2 alive.
     #m_floor_a1 = config["m_floor_a1"]
     #m_floor_a2 = config["m_floor_a2"]
-    m_d1 = exc(params["m_d1"])# + m_floor
-    m_d2 = exc(params["m_d2"]) #+ m_floor
+    # Affine floor on the PKA gains (config m_gain_floor): maps exc(w) in [0,1) onto
+    # [floor, 1), so a gain can approach the floor but never reach 0 and never loses its
+    # gradient. See config_script for why a hard max() would not fix the dead zone.
+    _mf = config.get("m_gain_floor", 0.0)
+    _floored = lambda w: _mf + (1.0 - _mf) * exc(w)
+    m_d1 = _floored(params["m_d1"])
+    m_d2 = _floored(params["m_d2"])
     # Cap the A1R gain so training can't grow adenosine inhibition on D1 PKA past
     # the DA drive and collapse dSPN excitability. (Ported from cbt_loop.)
-    m_a1 = exc(params["m_a1"])   # cap lifted: A1R gain free to train per-neuron
-    m_a2 = exc(params["m_a2"])
+    m_a1 = _floored(params["m_a1"])   # cap lifted: A1R gain free to train per-neuron
+    m_a2 = _floored(params["m_a2"])
     _zeros_d1_d2 = jnp.zeros((j_d2.shape[0], j_d1.shape[0]))
     _zeros_d2_d1 = jnp.zeros((j_d1.shape[0], j_d2.shape[0]))
     b_d1_d2 = inh(params.get("B_d1_d2", _zeros_d1_d2))  # D1 → D2 lateral inhibition
@@ -450,6 +517,16 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # shutting it off, so the response could never terminate. See tests/output_sharpness.)
     b_snr_med = inh(params["B_snr_med"])  # shape (n_med//2, n_snr)
     c_med = exc(params["C_med"])  # shape (n_output, 2): reads from E units only
+    # Readout source: "medulla" (default, the motor-output path) or "thalamus" (a separate
+    # positive-weight vector straight off the thalamic relay pool, bypassing BG -> medulla).
+    # Static config value, so the branch resolves at trace time (JAX-safe).
+    readout_source = config.get("readout_source", "medulla")
+    if readout_source not in ("medulla", "thalamus"):
+        raise ValueError(f"readout_source must be 'medulla' or 'thalamus', got {readout_source!r}")
+    if readout_source == "thalamus" and "C_thal" not in params:
+        raise KeyError("readout_source='thalamus' needs a 'C_thal' weight vector in params; "
+                       "this bundle predates it -- re-init, or read out from the medulla.")
+    c_thal = exc(params["C_thal"]) if "C_thal" in params else None
     out_gain = jnp.asarray(params["out_gain"])
     out_bias = jnp.asarray(params["out_bias"])
     # Readout gain/bias (fall back to constants for legacy bundles without them).
@@ -494,7 +571,9 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     # PKA saturation rule (ported from cbt_loop): mass-action-bounded pool fed
     # directly into bg_nln as excitability b (no per-step state squash).
     pka_saturation = config["pka_saturation"]
-    nt_mode = config["nt_mode"]
+    # Legacy bundles (saved before nt_mode joined the runtime config) omit this key;
+    # default to the config_script value so old pkls stay loadable.
+    nt_mode = config.get("nt_mode", "forward_euler")
     pka_max = config["pka_max"]
     pka_clip_eps = config["pka_clip_eps"]
 
@@ -647,33 +726,38 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         if pka_saturation == "mass_action":
             prod_d1 = prod_d1 * jnp.maximum(1.0 - pka_d1 / pka_max, 0.0)
             prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
-        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
-        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
+        pka_d1 = nln((1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1)
+        pka_d2 = nln((1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2)
         # Optional pin: hold pka_d1/pka_d2 at a fixed value (overrides the dynamics above).
         if pin_pka_d1 is not None:
             pka_d1 = jnp.full_like(pka_d1, pin_pka_d1)
         if pin_pka_d2 is not None:
             pka_d2 = jnp.full_like(pka_d2, pin_pka_d2)
 
+        gain_ed1 = pka_d1+0.5
+        gain_ed2 = pka_d2+0.5
+        gain_id1 = (1.0 - pka_d1)+0.5
+        gain_id2 = (1.0 - pka_d2)+0.5
+
         # PKA is bounded to (0,1), so it IS bg_nln's excitability b directly (no
         # soft-threshold gate). Clip only insets off the (0,1) endpoints.
-        pka_gate_d1 = jnp.clip(pka_d1, pka_clip_eps, 1.0 - pka_clip_eps)
-        pka_gate_d2 = jnp.clip(pka_d2, pka_clip_eps, 1.0 - pka_clip_eps)
+        #pka_gate_d1 = jnp.clip(pka_d1, pka_clip_eps, 1.0 - pka_clip_eps)
+        #pka_gate_d2 = jnp.clip(pka_d2, pka_clip_eps, 1.0 - pka_clip_eps)
 
         # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
-        x_d1 = x_d1 + (1.0 / tau_d1) * (j_d1 @ x_d1)
-        x_d1 = x_d1 + (1.0 / tau_d1) * (b_d2_d1 @ x_d2)
-        x_d1 = x_d1 + (1.0 / tau_d1) * (b_cU_d1 @ x_c_U)
-        x_d1 = x_d1 + (1.0 / tau_d1) * stim_d1
-        x_d1 = bg_nln(x_d1, pka_gate_d1)
+        x_d1 = x_d1 + (1.0 / tau_d1) * (gain_id1 * (j_d1 @ x_d1))
+        x_d1 = x_d1 + (1.0 / tau_d1) * (gain_id1 * (b_d2_d1 @ x_d2))
+        x_d1 = x_d1 + (1.0 / tau_d1) * (gain_ed1  * (b_cU_d1 @ x_c_U))
+        x_d1 = x_d1 + (1.0 / tau_d1) * (gain_ed1 * stim_d1)
+        x_d1 = nln(x_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
-        x_d2 = x_d2 + (1.0 / tau_d2) * (j_d2 @ x_d2)
-        x_d2 = x_d2 + (1.0 / tau_d2) * (b_d1_d2 @ x_d1)
-        x_d2 = x_d2 + (1.0 / tau_d2) * (b_cU_d2 @ x_c_U)
-        x_d2 = x_d2 + (1.0 / tau_d2) * stim_d2
-        x_d2 = bg_nln(x_d2, pka_gate_d2)
+        x_d2 = x_d2 + (1.0 / tau_d2) * (gain_id2 * (j_d2 @ x_d2))
+        x_d2 = x_d2 + (1.0 / tau_d2) * (gain_id2 * (b_d1_d2 @ x_d1))
+        x_d2 = x_d2 + (1.0 / tau_d2) * (gain_ed2 * (b_cU_d2 @ x_c_U))
+        x_d2 = x_d2 + (1.0 / tau_d2) * (gain_ed2 * stim_d2)
+        x_d2 = nln(x_d2)
 
         x_gpe = (1.0 - (1.0 / tau_gpe)) * x_gpe #+ (1.0 / tau_gpe) * (j_gpe @ x_gpe)
         x_gpe = x_gpe + (1.0 / tau_gpe) * gpe_pacer
@@ -697,7 +781,10 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
 
         # Biased sigmoid readout (ported from cbt_loop): nonzero resting prob
         # (~sigmoid(out_bias)) so the policy can explore; out_gain/out_bias trainable.
-        y_t = sigmoid(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
+        if readout_source == "thalamus":
+            y_t = sigmoid(out_gain * (c_thal @ x_t_exc) + out_bias)   # positive weights, relay pool
+        else:
+            y_t = sigmoid(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
 
         # Pack the full cortex/thalamus state ([cU..., cL..., c_inh...]) into the
         # output so downstream analysis code (get_brain_area, slope, ratios) still

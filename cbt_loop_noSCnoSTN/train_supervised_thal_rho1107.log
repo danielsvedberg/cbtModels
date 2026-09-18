@@ -1,0 +1,6 @@
+[balanced_init] cortico-thalamic loop rho(M): 1.516 -> 1.107 (target 1.107, tau=7.0)
+[supervised-thal] readout=thalamus  target 0.25->0.75 for 50 steps, opening 300 steps after cue onset
+[supervised-thal] task=self-timed  inputs (100, 1000, 1)  loss=mse  iters=10000
+step 200, loss: 0.011886, sup_loss: 0.011886, acc: 0.9500, in_window: 0.2754, off_window: 0.2741, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.011659, sup_loss: 0.011659, acc: 0.9500, in_window: 0.2842, off_window: 0.2742, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.011640, sup_loss: 0.011640, acc: 0.9500, in_window: 0.2857, off_window: 0.2736, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
