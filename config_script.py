@@ -132,7 +132,14 @@ TRAINING_CONFIG = {
 # hybrid / pavlovian two-cue variants are not valid targets for it and train_supervised_thal
 # builds the self-timed task unconditionally.
 SUPERVISED_THAL_CONFIG = {
-    "target_lo": 0.25,     # baseline; == sigmoid(out_bias), so a silent readout starts here
+    # Baseline == nln(out_bias) with a SILENT thalamus. Under the nln readout the bias must
+    # be atanh(target_lo), NOT logit(): logit(0.25) = -1.0986 puts the pre-activation below
+    # zero on 100% of timesteps, where max(0,tanh(.)) returns exactly 0 with exactly 0
+    # gradient -- the readout then passes NO gradient back and nothing upstream can learn.
+    # 0.10 rather than 0.0: a positive baseline keeps the 95% of off-window timesteps
+    # pushing the readout AWAY from the dead zone. target_lo = 0.0 would make baseline free
+    # (any z<=0 matches exactly) but would drive the readout INTO the absorbing dead zone.
+    "target_lo": 0.10,
     "target_hi": 0.75,     # step height
     "hold": 50,            # timesteps held at target_hi
     # Offset from CUE ONSET at which the step opens. t_wait == 300, so the plateau runs
@@ -163,7 +170,7 @@ SUPERVISED_THAL_CONFIG = {
 
 TEST_CONFIG = {
     "n_seeds": 5,
-    "noise_std": 0.05,
+    "noise_std": 0.1,
     "start_t": jnp.arange(270, 330, 10),
 }
 
@@ -318,7 +325,7 @@ CBT_WEIGHT_INIT = {
     "m_a1": 0.05,          # A1R inhibitory drive on D1 PKA (per-SPN gain)
     "m_a2": 0.5,          # A2R excitatory drive on D2 PKA (per-SPN gain)
     "out_gain": 4.0,       # readout gain
-    "out_bias": -1.0986123,  # readout bias = logit(0.25)
+    "out_bias": 0.1003353,   # readout bias = atanh(0.10), paired with the nln readout
     "k_a": 1.0,            # tonic adenosine level (pre-sigmoid/exc)
     # Initial PKA soft-threshold. The integrator ramps ~0.3->12 over a trial,
     # so a mid-range init puts the gate crossing inside the trial where there

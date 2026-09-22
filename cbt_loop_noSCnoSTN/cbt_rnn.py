@@ -706,8 +706,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         else:
             x_da  = (1.0 - 1.0 / tau_da) * x_da  + (1.0 / tau_da)  * (g_da_release  * da_release)
             x_ado = (1.0 - 1.0 / tau_ado) * x_ado + (1.0 / tau_ado) * (g_ado_release * ado_release)
-            x_da = tanh(x_da)
-            x_ado = tanh(x_ado)
+            x_da = nln(x_da)
+            x_ado = nln(x_ado)
         # Clamp adenosine to a fixed tonic level (overrides the dynamics above).
         if pin_ado is not None:
             x_ado = jnp.full_like(x_ado, pin_ado)
@@ -779,12 +779,15 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_med = x_med.at[:2].add((1.0 / tau_med) * (b_cL_med @ x_c_L))  # cL → medulla E units only
         x_med = nln(x_med)
 
-        # Biased sigmoid readout (ported from cbt_loop): nonzero resting prob
-        # (~sigmoid(out_bias)) so the policy can explore; out_gain/out_bias trainable.
+        # Biased nln readout: resting output is nln(out_bias) with a silent source pool, so
+        # out_bias must be atanh(target_lo). NOTE nln = max(0, tanh(.)) has EXACTLY zero
+        # gradient for a non-positive argument, so a bias calibrated for sigmoid
+        # (logit(0.25) = -1.0986) parks the readout in the dead zone and kills training
+        # outright. out_gain/out_bias remain trainable.
         if readout_source == "thalamus":
-            y_t = sigmoid(out_gain * (c_thal @ x_t_exc) + out_bias)   # positive weights, relay pool
+            y_t = nln(out_gain * (c_thal @ x_t_exc) + out_bias)   # positive weights, relay pool
         else:
-            y_t = sigmoid(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
+            y_t = nln(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
 
         # Pack the full cortex/thalamus state ([cU..., cL..., c_inh...]) into the
         # output so downstream analysis code (get_brain_area, slope, ratios) still
