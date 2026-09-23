@@ -779,15 +779,18 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         x_med = x_med.at[:2].add((1.0 / tau_med) * (b_cL_med @ x_c_L))  # cL → medulla E units only
         x_med = nln(x_med)
 
-        # Biased nln readout: resting output is nln(out_bias) with a silent source pool, so
-        # out_bias must be atanh(target_lo). NOTE nln = max(0, tanh(.)) has EXACTLY zero
-        # gradient for a non-positive argument, so a bias calibrated for sigmoid
-        # (logit(0.25) = -1.0986) parks the readout in the dead zone and kills training
-        # outright. out_gain/out_bias remain trainable.
+        # LINEAR readout -- no squashing nonlinearity on y_t. Resting output is out_bias
+        # itself with a silent source pool, so config out_bias == target_lo directly (no
+        # atanh()/logit() inversion). Unlike nln = max(0, tanh(.)) this has no dead zone
+        # (every timestep passes gradient whatever the sign) and no ceiling, at the cost of
+        # y_t no longer being bounded to [0,1]: the REINFORCE path's jr.bernoulli(p=ys) and
+        # loss_type="bce" both assume a probability and are NOT valid against this readout.
+        # out_gain/out_bias remain trainable.
         if readout_source == "thalamus":
-            y_t = nln(out_gain * (c_thal @ x_t_exc) + out_bias)   # positive weights, relay pool
+            #y_t = out_gain * (c_thal @ x_t_exc) + out_bias   # positive weights, relay pool
+            y_t = c_thal @ x_t_exc
         else:
-            y_t = nln(out_gain * (c_med @ x_med[:2]) + out_bias)  # readout from E units only
+            y_t = out_gain * (c_med @ x_med[:2]) + out_bias  # readout from E units only
 
         # Pack the full cortex/thalamus state ([cU..., cL..., c_inh...]) into the
         # output so downstream analysis code (get_brain_area, slope, ratios) still

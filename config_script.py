@@ -132,15 +132,15 @@ TRAINING_CONFIG = {
 # hybrid / pavlovian two-cue variants are not valid targets for it and train_supervised_thal
 # builds the self-timed task unconditionally.
 SUPERVISED_THAL_CONFIG = {
-    # Baseline == nln(out_bias) with a SILENT thalamus. Under the nln readout the bias must
-    # be atanh(target_lo), NOT logit(): logit(0.25) = -1.0986 puts the pre-activation below
-    # zero on 100% of timesteps, where max(0,tanh(.)) returns exactly 0 with exactly 0
-    # gradient -- the readout then passes NO gradient back and nothing upstream can learn.
-    # 0.10 rather than 0.0: a positive baseline keeps the 95% of off-window timesteps
-    # pushing the readout AWAY from the dead zone. target_lo = 0.0 would make baseline free
-    # (any z<=0 matches exactly) but would drive the readout INTO the absorbing dead zone.
-    "target_lo": 0.10,
-    "target_hi": 0.75,     # step height
+    # Target band 0.333 -> 0.666 (Svoboda-lab ALM ramping: the relevant signal is a
+    # modest rise from an already-active baseline, not a rise out of silence). The readout
+    # is now LINEAR (cbt_rnn: no nln/sigmoid on y_t), so baseline == out_bias directly with
+    # a silent thalamus -- CBT_WEIGHT_INIT["out_bias"] must equal target_lo, with no
+    # atanh()/logit() inversion. A linear readout has no dead zone and no ceiling: every
+    # timestep passes gradient regardless of sign, which is the point of dropping the
+    # wrapper, but y_t is no longer bounded to [0,1] (see the note in CBT_WEIGHT_INIT).
+    "target_lo": 0.333,
+    "target_hi": 0.666,    # step height
     "hold": 50,            # timesteps held at target_hi
     # Offset from CUE ONSET at which the step opens. t_wait == 300, so the plateau runs
     # [cue+300, cue+350): the network must bridge a 300-step delay on its own, which is
@@ -151,7 +151,11 @@ SUPERVISED_THAL_CONFIG = {
     "delay": TASK_CONFIG["t_wait"],
     # IN-WINDOW LOSS WEIGHT. The target is lo for ~95% of timesteps and hi for ~5%, so
     # unweighted, 95% of the gradient says "hold baseline" and the optimal CONSTANT output is
-    # 0.95*lo + 0.05*hi = 0.2750 -- which is exactly where every collapsed run converged.
+    # 0.95*lo + 0.05*hi = 0.3497 at the 0.333/0.666 band (was 0.2750 at 0.10/0.75) -- which
+    # is where every collapsed run converged. NOTE the narrower band makes the trivial
+    # solution HARDER to distinguish: unweighted it sits 0.0167 above lo (vs 0.175 before),
+    # so a collapsed run now looks almost exactly like a correct baseline hold. Judge these
+    # runs by in-window/off-window SEPARATION, never by loss or by mean output.
     # supervised_loss uses the mask as a per-timestep WEIGHT (sum(per_t*mask)/sum(mask)), so
     # upweighting in-window steps rebalances it; (1-f)/f = 19 makes the two classes equal.
     # Measured on the 300-step task at 4200 iters: 4/10 breakthroughs unweighted -> 9/10 at 19x.
@@ -325,7 +329,14 @@ CBT_WEIGHT_INIT = {
     "m_a1": 0.05,          # A1R inhibitory drive on D1 PKA (per-SPN gain)
     "m_a2": 0.5,          # A2R excitatory drive on D2 PKA (per-SPN gain)
     "out_gain": 4.0,       # readout gain
-    "out_bias": 0.1003353,   # readout bias = atanh(0.10), paired with the nln readout
+    # Readout bias == SUPERVISED_THAL_CONFIG["target_lo"] exactly: the readout is LINEAR
+    # (no nln/sigmoid on y_t), so with a silent source pool y_t == out_bias with no
+    # atanh()/logit() inversion. Keep these two in lockstep.
+    # CAUTION: a linear y_t is unbounded and may go negative. The REINFORCE path treats y_t
+    # as a Bernoulli probability (cbt_rnn.evaluate: jr.bernoulli(p=ys)) and loss_type="bce"
+    # takes log(y_t); neither is valid for out-of-range y_t. Only the mse/supervised-thal
+    # path is safe as written.
+    "out_bias": 0.333,
     "k_a": 1.0,            # tonic adenosine level (pre-sigmoid/exc)
     # Initial PKA soft-threshold. The integrator ramps ~0.3->12 over a trial,
     # so a mid-range init puts the gate crossing inside the trial where there
