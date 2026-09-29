@@ -1,0 +1,86 @@
+[balanced_init] cortico-thalamic loop rho(M): 1.516 -> 1.107 (target 1.107, tau=7.0)
+[runner] bundle -> /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000/params_supervised_thal.pkl  (readout_source=thalamus)
+[runner] redirected testing_script.cfg
+[runner] redirected plotting_functions.cs
+[runner] redirected opto_script.cfg
+[runner] redirected test_pnr.cfg
+[runner] all figures -> /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000
+[testing_script] loading params_supervised_thal.pkl
+[response] source=output threshold=0.5
+ys shape: (5, 6, 1000, 1)
+actions shape: (5, 6, 1000, 1)
+num state arrays: 12
+state[0] shape: (5, 6, 1000, 40)
+mean success: 0.5
+mean response time (s): 1.4786666631698608
+-> weight matrix (csv + heatmap) ...
+Weight matrix CSV saved to /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000/weight_matrix.csv
+Weight matrix heatmap saved to /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000/png/weight_matrix.png
+   [ok] weight matrix (csv + heatmap)
+-> output activity ...
+   [ok] output activity
+-> activity by area ...
+   [ok] activity by area
+-> cue-aligned activity ...
+   [ok] cue-aligned activity
+-> binned responses ...
+Shape of binned_xs: [(3, 600, 40), (3, 600, 10), (3, 600, 10), (3, 600, 6), (3, 600, 6), (3, 600, 8), (3, 600, 20), (3, 600, 10), (3, 600, 10), (3, 600, 4), (3, 600), (3, 600)]
+Shape of binned_ys: [(3, 600, 1), (4, 600, 1), (2, 600, 1), (4, 600, 1), (2, 600, 1), (3, 600, 1), (3, 600, 1), (4, 600, 1), (4, 600, 1)]
+   [ok] binned responses
+-> response time distributions ...
+   [ok] response time distributions
+-> dSPN-iSPN vs SNc correlogram ...
+0.681
+   [ok] dSPN-iSPN vs SNc correlogram
+-> dSPN-iSPN vs ramp-slope correlogram ...
+0.471
+   [ok] dSPN-iSPN vs ramp-slope correlogram
+-> dSPN-iSPN vs response-time correlogram ...
+0.205
+   [ok] dSPN-iSPN vs response-time correlogram
+-> objective function ...
+   objective: MSE=0.014207  BCE=0.666135  (training loss_type=mse)
+   [ok] objective function
+-> loss function schematic ...
+   [ok] loss function schematic
+-> adaptive loss function schematic ...
+   [ok] adaptive loss function schematic
+-> opto experiments ...
+Running opto demo conditions...
+  [opto] control    done (120 seeds)
+  [opto] inh dSPN   done (120 seeds)
+  [opto] inh iSPN   done (120 seeds)
+  [opto] stim dSPN  done (120 seeds)
+  [opto] stim iSPN  done (120 seeds)
+Running opto strength sweep...
+  [opto-sweep] inh dMSN   strength=-0.000 done
+  [opto-sweep] inh dMSN   strength=-0.200 done
+  [opto-sweep] inh dMSN   strength=-0.400 done
+  [opto-sweep] inh dMSN   strength=-0.600 done
+  [opto-sweep] inh dMSN   strength=-0.800 done
+  [opto-sweep] inh iMSN   strength=-0.000 done
+  [opto-sweep] inh iMSN   strength=-0.200 done
+  [opto-sweep] inh iMSN   strength=-0.400 done
+  [opto-sweep] inh iMSN   strength=-0.600 done
+  [opto-sweep] inh iMSN   strength=-0.800 done
+  [opto-sweep] stim dMSN  strength= 0.000 done
+  [opto-sweep] stim dMSN  strength= 0.200 done
+  [opto-sweep] stim dMSN  strength= 0.400 done
+  [opto-sweep] stim dMSN  strength= 0.600 done
+  [opto-sweep] stim dMSN  strength= 0.800 done
+  [opto-sweep] stim iMSN  strength= 0.000 done
+  [opto-sweep] stim iMSN  strength= 0.200 done
+  [opto-sweep] stim iMSN  strength= 0.400 done
+  [opto-sweep] stim iMSN  strength= 0.600 done
+  [opto-sweep] stim iMSN  strength= 0.800 done
+Opto plots complete.
+   [ok] opto experiments
+-> point-of-no-return experiments ...
+  [PNR] 1/3 cue magnitude sensitivity...
+  [PNR] 2/3 cue duration sensitivity...
+  [PNR] 3/3 dynamic perturbation (stop-signal)...
+  [PNR] done. Summary plots in /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000/pnr_test
+   [ok] point-of-no-return experiments
+Done. Plots written under /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000
+
+[runner] wrote 34 png, 33 svg, 3 pnr files into /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/oscillator_trainability/testing_trained_10000

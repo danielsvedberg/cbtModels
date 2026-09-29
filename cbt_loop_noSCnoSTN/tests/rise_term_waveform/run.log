@@ -1,0 +1,22 @@
+[balanced_init] cortico-thalamic loop rho(M): 1.516 -> 1.107 (target 1.107, tau=7.0)
+training 600 iters (rise_coef=2.5, window=25)...
+      0 total 0.43473 rise 0.27338 obs_rise +0.0024
+    100 total 0.30085 rise 0.27357 obs_rise +0.0022
+    200 total 0.29845 rise 0.27128 obs_rise +0.0036
+    300 total 0.29020 rise 0.26332 obs_rise +0.0086
+    400 total 0.24476 rise 0.21875 obs_rise +0.0399
+    500 total 0.05744 rise 0.01065 obs_rise +0.3107
+  done (296s)  final total 0.04918 obs_rise +0.3107
+  cached -> trained_600.pkl
+
+--- verdict numbers (trained, cue-aligned mean) ---
+baseline        [-150,0) : 0.4539   (target 0.333)
+plateau 1st half [0,25) : 0.6259   (target 0.666)
+plateau 2nd half [25,50): 0.4443   (target 0.666)
+plateau peak             : 0.7100 at tau=17
+
+plateau rise over baseline : +0.0813  (24% of the 0.333 band)
+decay across the plateau   : +0.1816  (223% of the rise)
+VERDICT: TRANSIENT (decays >25% within the window)
+
+wrote /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/tests/rise_term_waveform/rise_term_waveform.png

@@ -72,6 +72,8 @@ def main(num_iters=None, delay=None, loss_type=None):
           f"for {sup['hold']} steps, opening {sup['delay']} steps after cue onset")
     print(f"[supervised-thal] task=self-timed  inputs {tuple(inputs.shape)}  "
           f"loss={sup['loss_type']}  iters={n_iters}")
+    print(f"[supervised-thal] rise_coef={sup['rise_coef']} rise_window={sup['rise_window']} "
+          f"(flat-output rise penalty = {sup['rise_coef']*(sup['target_hi']-sup['target_lo'])**2:.4f})")
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
@@ -93,6 +95,7 @@ def main(num_iters=None, delay=None, loss_type=None):
         gpe_floor_coef=rl["gpe_floor_coef"], gpe_floor_min=rl["gpe_floor_min"],
         dead_area_coef=rl["dead_area_coef"], dead_area_min=rl["dead_area_min"],
         dead_proj_coef=rl["dead_proj_coef"], dead_proj_floor=rl["dead_proj_floor"],
+        rise_coef=sup["rise_coef"], rise_window=sup["rise_window"],
     )
     out_path = cfg.params_path().with_name("params_supervised_thal.pkl")
     with out_path.open("wb") as f:

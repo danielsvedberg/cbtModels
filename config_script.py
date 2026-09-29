@@ -133,12 +133,19 @@ TRAINING_CONFIG = {
 # builds the self-timed task unconditionally.
 SUPERVISED_THAL_CONFIG = {
     # Target band 0.333 -> 0.666 (Svoboda-lab ALM ramping: the relevant signal is a
-    # modest rise from an already-active baseline, not a rise out of silence). The readout
-    # is now LINEAR (cbt_rnn: no nln/sigmoid on y_t), so baseline == out_bias directly with
-    # a silent thalamus -- CBT_WEIGHT_INIT["out_bias"] must equal target_lo, with no
-    # atanh()/logit() inversion. A linear readout has no dead zone and no ceiling: every
-    # timestep passes gradient regardless of sign, which is the point of dropping the
-    # wrapper, but y_t is no longer bounded to [0,1] (see the note in CBT_WEIGHT_INIT).
+    # modest rise from an already-active baseline, not a rise out of silence).
+    # The thalamic readout is LINEAR AND BARE (cbt_rnn: y_t = c_thal @ x_t_exc -- no
+    # squashing nonlinearity, no gain, no bias), so:
+    #   * target_lo is NOT calibrated against out_bias. There is no bias term on this
+    #     readout; CBT_WEIGHT_INIT out_gain/out_bias are unused here. The network has to
+    #     generate the baseline from thalamic activity itself.
+    #   * no dead zone: every timestep passes gradient, unlike nln = max(0, tanh(.)) which
+    #     is exactly flat for a non-positive argument.
+    #   * y_t >= 0 but unbounded above, and supervised_loss clips at 1.0 with zero gradient
+    #     past it. Keep target_hi well under 1 for that reason.
+    # The narrow band is what makes a collapsed run hard to spot: the unweighted trivial
+    # constant is 0.3497, only 0.0167 above target_lo, so a flat run reads as a clean
+    # baseline hold. Judge by separation (see in_window_weight / rise_coef below).
     "target_lo": 0.333,
     "target_hi": 0.666,    # step height
     "hold": 50,            # timesteps held at target_hi
@@ -159,7 +166,48 @@ SUPERVISED_THAL_CONFIG = {
     # supervised_loss uses the mask as a per-timestep WEIGHT (sum(per_t*mask)/sum(mask)), so
     # upweighting in-window steps rebalances it; (1-f)/f = 19 makes the two classes equal.
     # Measured on the 300-step task at 4200 iters: 4/10 breakthroughs unweighted -> 9/10 at 19x.
+    # DO NOT raise this to emphasize the step. Per-timestep reweighting cannot remove the
+    # flat-output basin, only relocate it: the best constant is the weighted target mean and
+    # its loss is r/(1+r)^2 * (hi-lo)^2 with r = W_in/W_off, which PEAKS at r = 1 -- exactly
+    # this value. Raising it makes the trivial solution cheaper and slides it toward hi:
+    #   w= 19  best constant 0.4995  loss 0.027722   <- max pressure on the flat solution
+    #   w=190  best constant 0.6357  loss 0.009164   <- 10x "emphasis" buys a constant-HIGH
+    #   w=380  best constant 0.6501  loss 0.005029      collapse for 1/5 the cost
+    # Use rise_coef below to penalize flatness instead; it is the only term a constant
+    # cannot satisfy at any weight.
     "in_window_weight": 19.0,
+    # RISE TERM (supervised_loss rise_coef/rise_window). Compares mean output over
+    # [onset, onset+rise_window) against mean over [onset-rise_window, onset) and hinges on
+    # falling short of the full step height. A constant output scores the whole
+    # (hi-lo)^2 = 0.1109 here and cannot reduce it by ANY reweighting -- unlike the level
+    # MSE, whose trivial-solution cost caps at 0.0277.
+    # rise_coef = 2.5 makes the flat solution's rise penalty 2.5*0.1109 = 0.277, i.e. ~10x
+    # the level term's 0.0277 -- the "weight the increase 10x" intent, applied to a term
+    # where extra weight actually costs the flat solution something.
+    # rise_window = 25: half the 50-step plateau, so the post-window sits inside the
+    # plateau and the pre-window inside baseline. Averaging over 25 steps (rather than
+    # differencing adjacent steps) keeps the target rise achievable for a tau=7 leaky
+    # system and stops per-step state noise from dominating the gradient.
+    # OFF (0.0) by default -- the whole term is guarded by `if rise_coef != 0.0` in
+    # supervised_loss, so at 0.0 the loss is exactly the plain weighted level MSE and both
+    # rise_loss and observed_rise report 0. Set to 2.5 to re-enable.
+    #
+    # Why it is off: it works, and then gets gamed. It does escape the flat-constant basin
+    # (obs_rise 0.002 -> 0.31 at 600 iters, which the level MSE alone never manages), but the
+    # network buys the rise by training the cortico-thalamic loop through a Hopf bifurcation
+    # (effective rho* 0.912 -> 1.02+) and harvesting the resulting ~68-step limit cycle: a
+    # trough parked in the pre-window, a peak in the post-window, and a free-running
+    # oscillation across the whole trial including before the cue. rise_window = 25 is ~1/3
+    # of that period, i.e. near the window that MAXIMIZES an oscillator's post-minus-pre.
+    # See cbt_loop_noSCnoSTN/tests/rise_term_waveform/ for the waveform.
+    #
+    # If re-enabling, the oscillation is the thing to watch, not the loss: pair it with an
+    # off-window VARIANCE penalty (nothing currently prices the ripple), or set rise_window
+    # to a full oscillation period so an oscillation contributes ~0 to post-minus-pre
+    # (collides with hold = 50), or lower rise_coef until the ripple is not worth its level
+    # cost. None of those three are tested.
+    "rise_coef": 0.0,
+    "rise_window": 25,
     # FREEZE the t=0 state parameters (cbt_rnn.INIT_STATE_KEYS) so the optimiser cannot tune
     # them. They are ordinary trainable params by default, which has caused two silent
     # failures: x_da0 trains slightly negative and the [0,1] clip rectifies the INITIAL
@@ -308,8 +356,8 @@ CBT_INIT_STATE = {
     "x_stn0": 0.1,   # STN families only
     "x_snr0": 0.25,
     "x_sc0": 0.1,    # SC families only
-    "x_t0_exc": 0.1,
-    "x_t0_inh": 0.4,
+    "x_t0_exc": 0.4,
+    "x_t0_inh": 0.5,
     "x_med0": 0.1,
     "pka_d10": 0.5,
     "pka_d20": 0.5,
@@ -328,15 +376,31 @@ CBT_WEIGHT_INIT = {
     "m_d2": 0.09,          # D2R inhibitory drive on D2 PKA (per-SPN gain)
     "m_a1": 0.05,          # A1R inhibitory drive on D1 PKA (per-SPN gain)
     "m_a2": 0.5,          # A2R excitatory drive on D2 PKA (per-SPN gain)
-    "out_gain": 4.0,       # readout gain
-    # Readout bias == SUPERVISED_THAL_CONFIG["target_lo"] exactly: the readout is LINEAR
-    # (no nln/sigmoid on y_t), so with a silent source pool y_t == out_bias with no
-    # atanh()/logit() inversion. Keep these two in lockstep.
-    # CAUTION: a linear y_t is unbounded and may go negative. The REINFORCE path treats y_t
-    # as a Bernoulli probability (cbt_rnn.evaluate: jr.bernoulli(p=ys)) and loss_type="bce"
-    # takes log(y_t); neither is valid for out-of-range y_t. Only the mse/supervised-thal
-    # path is safe as written.
-    "out_bias": 0.333,
+    # out_gain / out_bias apply to the MEDULLA readout only. The thalamic readout is
+    # currently bare -- cbt_rnn: y_t = c_thal @ x_t_exc, no gain and no bias -- so both of
+    # these are UNUSED and receive zero gradient whenever readout_source == "thalamus"
+    # (i.e. throughout train_supervised_thal). Do not tune them against a supervised-thal
+    # run; they cannot affect it.
+    #
+    # Consequences of the bare thalamic readout, which are properties of the model rather
+    # than of these values:
+    #   * There is no bias, so the BASELINE IS NOT FREE. target_lo must be produced by real
+    #     thalamic activity; the network cannot hold it by parking a scalar. This is what
+    #     makes the flat solution cost something -- see SUPERVISED_THAL_CONFIG rise_coef.
+    #   * Dropping out_gain = 4.0 cut output sensitivity 4x: dy/d(x_t_exc) = sum(exc(C_thal))
+    #     ~= 0.64 instead of ~2.54, so spanning the 0.333 band needs mean thalamic activity
+    #     to swing ~0.52 (roughly tripling from its ~0.17 rest) instead of ~0.13. Measured
+    #     effect: the rise term still escapes the flat solution, but takes ~400 iters to do
+    #     it instead of ~150. Restore the gain (y_t = out_gain * (c_thal @ x_t_exc), still
+    #     bias-free) if that latency matters.
+    #   * y_t >= 0 (exc() weights, non-negative rates) but is UNBOUNDED ABOVE. The REINFORCE
+    #     path treats y_t as a Bernoulli probability (cbt_rnn.evaluate: jr.bernoulli(p=ys))
+    #     and loss_type="bce" takes log(y_t); neither is valid for y_t > 1. Only the
+    #     mse/supervised-thal path is safe as written. NOTE supervised_loss itself clips to
+    #     [1e-7, 1-1e-7] before scoring, so any y_t above 1 is scored as 1 with ZERO
+    #     gradient -- a silent ceiling on the linear readout.
+    "out_gain": 4.0,       # readout gain (MEDULLA readout only -- see above)
+    "out_bias": 0.333,     # readout bias (MEDULLA readout only -- see above)
     "k_a": 1.0,            # tonic adenosine level (pre-sigmoid/exc)
     # Initial PKA soft-threshold. The integrator ramps ~0.3->12 over a trial,
     # so a mid-range init puts the gate crossing inside the trial where there

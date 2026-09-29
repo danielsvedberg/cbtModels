@@ -15,10 +15,14 @@ def exc(w):
     # NOTE this flips the exc(0) > 0.25 guard in init_params, which therefore SKIPS the
     # wrapper-aware logit init. Weights saved under the sigmoid wrapper are in LOGIT space
     # (~ -2.8) and tanh-clip maps those to 0, so old pkls are NOT loadable under this form.
-    return jnp.clip(jax.nn.tanh(w), 0.0, None)
+    #return jnp.clip(jax.nn.tanh(w), 0.0, None)
+    #return jnp.abs(jax.nn.tanh(w))  # abs(tanh) is a more symmetric Dale-positive wrapper than clip(tanh)
+    return jnp.abs(w)
 
 def inh(w):
-    return -jnp.clip(jax.nn.tanh(w), 0.0, None)
+    #return -jnp.clip(jax.nn.tanh(w), 0.0, None)
+    #return -jnp.abs(jax.nn.tanh(w))
+    return -jnp.abs(w)
 
 
 def nln(x):
@@ -1025,6 +1029,8 @@ def supervised_loss(
     dead_area_min=0.0,
     dead_proj_coef=0.0,
     dead_proj_floor=0.1,
+    rise_coef=0.0,
+    rise_window=25,
 ):
     """Dense supervised loss: match the network output to the target trajectory.
 
@@ -1150,8 +1156,43 @@ def supervised_loss(
     # from collapsing toward zero.
     dead_proj_loss = dead_projection_loss(params, dead_proj_coef, dead_proj_floor, probs.dtype)
 
+    # WINDOWED RISE term: the one penalty a constant output cannot buy its way out of.
+    #
+    # Per-timestep mask reweighting CANNOT remove the flat-output basin -- it only moves it.
+    # For weighted MSE the best constant is the weighted target mean, and its loss is
+    # r/(1+r)^2 * (hi-lo)^2 with r = W_in/W_off. That peaks at r = 1, which is exactly what
+    # in_window_weight = (1-f)/f = 19 already sets. Pushing the in-window weight HIGHER makes
+    # the flat solution CHEAPER and slides it toward hi (w=190: best constant 0.6357, loss
+    # 0.0092 vs 0.0277 at w=19), i.e. it buys a constant-high collapse instead of a step.
+    #
+    # This term compares the mean output over [t0, t0+k) against the mean over [t0-k, t0),
+    # where t0 is the target's rise onset, and hinges on falling short of the true step
+    # height. For ANY constant output the difference is 0 and the cost is the full
+    # (hi-lo)^2 = 0.1109 -- irreducible, and 4x the level term's trivial-solution cost.
+    # Averaging over k steps (rather than differencing adjacent steps) keeps it achievable
+    # for a tau=7 leaky system and insensitive to per-step state noise. The hinge means
+    # overshooting the step height is free.
+    if rise_coef != 0.0:
+        mid = 0.5 * (jnp.min(target_2d) + jnp.max(target_2d))
+        t0 = jnp.argmax(target_2d > mid, axis=1)          # first in-window step, per trial
+        k = int(rise_window)
+        t_idx = jnp.arange(T)[None, :]
+        post_m = ((t_idx >= t0[:, None]) & (t_idx < t0[:, None] + k)).astype(probs.dtype)
+        pre_m = ((t_idx >= t0[:, None] - k) & (t_idx < t0[:, None])).astype(probs.dtype)
+        post = jnp.sum(probs * post_m, axis=1) / (jnp.sum(post_m, axis=1) + 1e-8)
+        pre = jnp.sum(probs * pre_m, axis=1) / (jnp.sum(pre_m, axis=1) + 1e-8)
+        required = jnp.max(target_2d) - jnp.min(target_2d)
+        rise_loss = rise_coef * jnp.mean(
+            jnp.square(jnp.maximum(0.0, required - (post - pre)))
+        )
+        observed_rise = jnp.mean(post - pre)
+    else:
+        rise_loss = jnp.array(0.0, dtype=probs.dtype)
+        observed_rise = jnp.array(0.0, dtype=probs.dtype)
+
     total_loss = (sup_loss + asym_loss + rest_pka_loss + pathway_floor_loss
-                  + c_snc_floor_loss + gpe_floor_loss + dead_area_loss + dead_proj_loss)
+                  + c_snc_floor_loss + gpe_floor_loss + dead_area_loss + dead_proj_loss
+                  + rise_loss)
     aux = {
         "sup_loss": sup_loss,
         "accuracy": accuracy,
@@ -1164,6 +1205,8 @@ def supervised_loss(
         "gpe_floor_loss": gpe_floor_loss,
         "dead_area_loss": dead_area_loss,
         "dead_proj_loss": dead_proj_loss,
+        "rise_loss": rise_loss,
+        "observed_rise": observed_rise,
     }
     return total_loss, aux
 
@@ -1194,6 +1237,8 @@ def fit_rnn_supervised(
     dead_area_min=0.0,
     dead_proj_coef=0.0,
     dead_proj_floor=0.1,
+    rise_coef=0.0,
+    rise_window=25,
 ):
     """Train an RNN by direct supervision against the task target trajectory.
 
@@ -1241,6 +1286,8 @@ def fit_rnn_supervised(
                 dead_area_min,
                 dead_proj_coef,
                 dead_proj_floor,
+                rise_coef,
+                rise_window,
             ),
             has_aux=True,
         )(cur_params)

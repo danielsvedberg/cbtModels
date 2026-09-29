@@ -362,6 +362,7 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
     x_snc0   = jnp.asarray(params["x_snc0"])
     x_gpe0   = jnp.asarray(params["x_gpe0"])
     x_snr0   = jnp.asarray(params["x_snr0"])
+
     x_t0_exc = jnp.asarray(params["x_t0_exc"])
     x_t0_inh = jnp.asarray(params["x_t0_inh"])
     x_med0   = jnp.asarray(params["x_med0"])
@@ -726,8 +727,11 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         if pka_saturation == "mass_action":
             prod_d1 = prod_d1 * jnp.maximum(1.0 - pka_d1 / pka_max, 0.0)
             prod_d2 = prod_d2 * jnp.maximum(1.0 - pka_d2 / pka_max, 0.0)
-        pka_d1 = nln((1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1)
-        pka_d2 = nln((1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2)
+        pka_d1 = (1.0 - 1.0 / tau_pka_fall) * pka_d1 + (1.0 / tau_pka_rise) * prod_d1
+        pka_d2 = (1.0 - 1.0 / tau_pka_fall) * pka_d2 + (1.0 / tau_pka_rise) * prod_d2
+        if pka_saturation != "mass_action":
+            pka_d1 = sigmoid(4*(pka_d1-0.5))  # squash to (0,1) for bg_nln excitability b
+            pka_d2 = sigmoid(4*(pka_d2-0.5))  # squash to (0,1) for bg_nln excitability b
         # Optional pin: hold pka_d1/pka_d2 at a fixed value (overrides the dynamics above).
         if pin_pka_d1 is not None:
             pka_d1 = jnp.full_like(pka_d1, pin_pka_d1)
@@ -735,22 +739,22 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
             pka_d2 = jnp.full_like(pka_d2, pin_pka_d2)
 
         gain_ed1 = pka_d1+0.5
-        gain_ed2 = pka_d2+0.5
+        gain_id2 = pka_d2+0.5
         gain_id1 = (1.0 - pka_d1)+0.5
-        gain_id2 = (1.0 - pka_d2)+0.5
+        gain_ed2 = (1.0 - pka_d2)+0.5
 
         # PKA is bounded to (0,1), so it IS bg_nln's excitability b directly (no
         # soft-threshold gate). Clip only insets off the (0,1) endpoints.
         #pka_gate_d1 = jnp.clip(pka_d1, pka_clip_eps, 1.0 - pka_clip_eps)
         #pka_gate_d2 = jnp.clip(pka_d2, pka_clip_eps, 1.0 - pka_clip_eps)
 
-        # PKA shifts rheobase in bg_nln: higher PKA → lower threshold → more excitable.
+        # PKA shifts rheobase in bg_nln: higher PKA → lower is threshold → more excitable.
         x_d1 = (1.0 - (1.0 / tau_d1)) * x_d1
         x_d1 = x_d1 + (1.0 / tau_d1) * (gain_id1 * (j_d1 @ x_d1))
         x_d1 = x_d1 + (1.0 / tau_d1) * (gain_id1 * (b_d2_d1 @ x_d2))
         x_d1 = x_d1 + (1.0 / tau_d1) * (gain_ed1  * (b_cU_d1 @ x_c_U))
         x_d1 = x_d1 + (1.0 / tau_d1) * (gain_ed1 * stim_d1)
-        x_d1 = nln(x_d1)
+        x_d1 = nln(gain_ed1 * x_d1)
 
         x_d2 = (1.0 - (1.0 / tau_d2)) * x_d2
         x_d2 = x_d2 + (1.0 / tau_d2) * (gain_id2 * (j_d2 @ x_d2))
@@ -787,8 +791,8 @@ def multiregion_rnn(params, config, inputs, opto_stimulation=None, rng_key=None)
         # loss_type="bce" both assume a probability and are NOT valid against this readout.
         # out_gain/out_bias remain trainable.
         if readout_source == "thalamus":
-            #y_t = out_gain * (c_thal @ x_t_exc) + out_bias   # positive weights, relay pool
-            y_t = c_thal @ x_t_exc
+            y_t = out_gain * (c_thal @ x_t_exc) + out_bias   # positive weights, relay pool
+            #y_t = c_thal @ x_t_exc + out_bias   # positive weights, relay pool
         else:
             y_t = out_gain * (c_med @ x_med[:2]) + out_bias  # readout from E units only
 
