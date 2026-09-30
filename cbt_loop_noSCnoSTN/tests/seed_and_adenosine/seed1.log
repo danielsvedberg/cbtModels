@@ -1,0 +1,29 @@
+[supervised-thal] in-window loss weight = 19.0
+[balanced_init] cortico-thalamic loop rho(M): 1.489 -> 1.107 (target 1.107, tau=7.0)
+[supervised-thal] seed = 1
+[supervised-thal] readout=thalamus  target 0.333->0.666 for 50 steps, opening 300 steps after cue onset
+[supervised-thal] task=self-timed  inputs (100, 1000, 1)  loss=mse  iters=4000
+[supervised-thal] rise_coef=0.0 rise_window=25 (flat-output rise penalty = 0.0000)
+[freeze] init-state params frozen: 15 keys
+step 200, loss: 0.027177, sup_loss: 0.027177, acc: 0.5279, in_window: 0.5042, off_window: 0.4963, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 400, loss: 0.025309, sup_loss: 0.025309, acc: 0.6370, in_window: 0.5126, off_window: 0.4909, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 600, loss: 0.021149, sup_loss: 0.021149, acc: 0.6943, in_window: 0.5410, off_window: 0.4650, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 800, loss: 0.007826, sup_loss: 0.007826, acc: 0.9128, in_window: 0.6139, off_window: 0.3821, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1000, loss: 0.002185, sup_loss: 0.002185, acc: 0.9783, in_window: 0.6568, off_window: 0.3452, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1200, loss: 0.001978, sup_loss: 0.001978, acc: 0.9800, in_window: 0.6549, off_window: 0.3436, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1400, loss: 0.002021, sup_loss: 0.002021, acc: 0.9813, in_window: 0.6528, off_window: 0.3424, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1600, loss: 0.001331, sup_loss: 0.001331, acc: 0.9858, in_window: 0.6601, off_window: 0.3415, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 1800, loss: 0.001251, sup_loss: 0.001251, acc: 0.9874, in_window: 0.6598, off_window: 0.3408, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2000, loss: 0.001174, sup_loss: 0.001174, acc: 0.9891, in_window: 0.6582, off_window: 0.3397, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2200, loss: 0.001115, sup_loss: 0.001115, acc: 0.9885, in_window: 0.6603, off_window: 0.3398, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2400, loss: 0.001106, sup_loss: 0.001106, acc: 0.9883, in_window: 0.6596, off_window: 0.3396, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2600, loss: 0.001187, sup_loss: 0.001187, acc: 0.9876, in_window: 0.6603, off_window: 0.3401, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 2800, loss: 0.001021, sup_loss: 0.001021, acc: 0.9892, in_window: 0.6599, off_window: 0.3393, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 3000, loss: 0.000990, sup_loss: 0.000990, acc: 0.9897, in_window: 0.6581, off_window: 0.3385, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 3200, loss: 0.001022, sup_loss: 0.001022, acc: 0.9893, in_window: 0.6582, off_window: 0.3385, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 3400, loss: 0.000981, sup_loss: 0.000981, acc: 0.9901, in_window: 0.6593, off_window: 0.3382, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 3600, loss: 0.000934, sup_loss: 0.000934, acc: 0.9903, in_window: 0.6630, off_window: 0.3399, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 3800, loss: 0.000935, sup_loss: 0.000935, acc: 0.9901, in_window: 0.6604, off_window: 0.3378, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+step 4000, loss: 0.000889, sup_loss: 0.000889, acc: 0.9910, in_window: 0.6607, off_window: 0.3379, asym: 0.0000, rest_pka: 0.0000, pathway_floor: 0.0000, c_snc_floor: 0.0000, gpe_floor: 0.0000, dead_area: 0.0000, dead_proj: 0.0000
+Saved to: /home/dsvedberg/Documents/CodeVault/cbtModels/cbt_loop_noSCnoSTN/params_supervised_thal_seed1.pkl
+Final logged loss: 0.000889

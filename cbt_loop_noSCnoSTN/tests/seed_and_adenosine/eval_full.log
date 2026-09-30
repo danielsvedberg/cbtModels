@@ -1,0 +1,11 @@
+threshold 0.49950000000000006, cue onsets 60-435 (t_start spans 55-539), 10 seeds each
+
+run                        slope       r   latency     sd  cross%      sep  %band  verdict
+------------------------------------------------------------------------------------------------------------
+seed0                      1.002   0.999     293.4    4.1    100%   0.3187    96%  SELF-TIMED
+seed1                      1.005   1.000     292.5    3.5    100%   0.3238    97%  SELF-TIMED
+seed2                      0.404   0.452     211.4  114.6    100%   0.2870    86%  partial
+seed3                      0.537   0.570     229.2  103.9    100%   0.2901    87%  partial
+seed4_adoFREE              0.959   0.958     275.5   33.6    100%   0.3058    92%  SELF-TIMED
+seed4_pinned               0.239   0.401     161.6  107.9    100%   0.2105    63%  FIXED-TIME (degenerate)
+REFERENCE(verified)        0.477   0.535     239.4  105.8    100%   0.2998    90%  partial

@@ -44,7 +44,13 @@ def _build_task(sup_cfg):
     )
 
 
-def main(num_iters=None, delay=None, loss_type=None):
+def main(num_iters=None, delay=None, loss_type=None, seed=None, pin_ado="keep", tag=None):
+    """seed: overrides TRAINING_CONFIG["seed"] for BOTH the weight init and the training
+    rng, so different seeds are genuinely independent runs (the task itself is still built
+    from task_seed, so every seed sees the same trials).
+    pin_ado: "keep" (config default), or a float, or None to LIFT the adenosine clamp and
+    let x_ado run as a dynamic state again.
+    tag: suffix for the output pkl so parallel runs do not overwrite each other."""
     sup = dict(cfg.SUPERVISED_THAL_CONFIG)
     if delay is not None:
         sup["delay"] = int(delay)
@@ -63,10 +69,15 @@ def main(num_iters=None, delay=None, loss_type=None):
         _hi = _np.asarray(targets)[..., 0] > (sup["target_lo"] + sup["target_hi"]) / 2
         masks = jnp.asarray(_np.where(_hi, w, 1.0)[..., None].astype(_np.float32))
         print(f"[supervised-thal] in-window loss weight = {w}")
-    params, config = cbtl.init_params(jr.PRNGKey(cfg.TRAINING_CONFIG["seed"]),
-                                      n_input=inputs.shape[-1])
+    run_seed = cfg.TRAINING_CONFIG["seed"] if seed is None else int(seed)
+    params, config = cbtl.init_params(jr.PRNGKey(run_seed), n_input=inputs.shape[-1])
     config = dict(config)
     config["readout_source"] = "thalamus"   # <- the whole point of this mode
+    if pin_ado != "keep":
+        config["pin_ado"] = pin_ado
+        print(f"[supervised-thal] pin_ado {cfg.RUNTIME_CONFIG.get('pin_ado')} -> {pin_ado}"
+              + ("  (adenosine DYNAMIC again; ado_release/tau_ado are live)" if pin_ado is None else ""))
+    print(f"[supervised-thal] seed = {run_seed}")
 
     print(f"[supervised-thal] readout=thalamus  target {sup['target_lo']}->{sup['target_hi']} "
           f"for {sup['hold']} steps, opening {sup['delay']} steps after cue onset")
@@ -86,7 +97,7 @@ def main(num_iters=None, delay=None, loss_type=None):
         cbtl.rnn_func, params, config, inputs, masks, optimizer, n_iters,
         batch_targets=targets,
         log_interval=sup["log_interval"],
-        seed=cfg.TRAINING_CONFIG["seed"],
+        seed=run_seed,
         loss_type=sup["loss_type"],
         asym_coef=rl["asym_coef"], asym_margin=rl["asym_margin"],
         rest_pka_coef=rl["rest_pka_coef"], rest_pka_margin=rl["rest_pka_margin"],
@@ -97,7 +108,8 @@ def main(num_iters=None, delay=None, loss_type=None):
         dead_proj_coef=rl["dead_proj_coef"], dead_proj_floor=rl["dead_proj_floor"],
         rise_coef=sup["rise_coef"], rise_window=sup["rise_window"],
     )
-    out_path = cfg.params_path().with_name("params_supervised_thal.pkl")
+    out_path = cfg.params_path().with_name(
+        f"params_supervised_thal{('_' + tag) if tag else ''}.pkl")
     with out_path.open("wb") as f:
         pkl.dump({"params": best_params, "config": config}, f)
     print(f"Saved to: {out_path}")
@@ -114,5 +126,14 @@ if __name__ == "__main__":
                          "(default t_wait=300; use t_cue+t_wait=310 to match the "
                          "reinforce reward window exactly)")
     ap.add_argument("--loss", choices=("mse", "bce"), default=None)
+    ap.add_argument("--seed", type=int, default=None,
+                    help="override TRAINING_CONFIG['seed'] (weight init + training rng)")
+    ap.add_argument("--pin-ado", dest="pin_ado", default="keep",
+                    help="'keep' (default), a float, or 'none' to LIFT the adenosine clamp")
+    ap.add_argument("--tag", default=None, help="suffix for the output pkl")
     a = ap.parse_args()
-    main(num_iters=a.iters, delay=a.delay, loss_type=a.loss)
+    _pa = a.pin_ado
+    if _pa != "keep":
+        _pa = None if str(_pa).lower() in ("none", "null", "off") else float(_pa)
+    main(num_iters=a.iters, delay=a.delay, loss_type=a.loss, seed=a.seed,
+         pin_ado=_pa, tag=a.tag)

@@ -471,11 +471,22 @@ _CBT_FAMILY_STRUCTURE = {
                           # lambda = 1.0045). extra_weight_init below is SOLVED for this value
                           # -- change one and the PKA rest point moves. Set to None to restore
                           # the dynamic pool. tau_ado/ado_release are then unused.
-                          # Adenosine CLAMPED. Tried unpinned (2026-09-10): training stalled
-                          # at the trivial constant (separation 0.0000 at step 1800, where the
-                          # working run was already at 0.4698), so the clamp went back on.
-                          # ado_release / tau_ado are INERT while this is set.
-                          "pin_ado": 0.256,
+                          # ADENOSINE IS NOW DYNAMIC (2026-09-29). The clamp was reinstated on
+                          # 2026-09-10 because unpinning stalled at the trivial constant -- but
+                          # that predates the gain-based striatum, and it no longer holds.
+                          # Controlled test, seed 4, 4000 iters, clamp the only difference:
+                          #     pinned 0.256 : slope 0.772  separation 63%  hi@cue 28%
+                          #     unpinned     : slope 0.946  separation 92%  hi@cue  1%
+                          # ("hi@cue" = fraction of trials whose readout is ALREADY above
+                          # threshold when the cue arrives, i.e. a false-alarm-prone baseline.)
+                          # Mechanism, predicted at init and confirmed: unpinned x_ado settles
+                          # at mean ~0.19 (range 0.054-0.227) instead of being held at 0.256,
+                          # which weakens the constant A1R brake m_a1*x_ado that was rectifying
+                          # prod_d1 to zero at most seeds. tau_ado / ado_release are LIVE again.
+                          # Set back to 0.256 to restore the clamp -- note extra_weight_init
+                          # below was solved against the pinned value, so the gains are not
+                          # re-tuned for the dynamic pool and there may be headroom there.
+                          "pin_ado": None,
                           # SNc pacer cap raised 0.2 -> 0.5 (family-scoped; the shared
                           # CBT_RUNTIME_CONFIG value is untouched so cbt_loop / noSC keep 0.2).
                           # snc_pacer = snc_pacer_min + sigmoid(P_snc)*(max-min), so the cap is a
