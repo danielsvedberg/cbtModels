@@ -12,58 +12,19 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 import self_timed_movement_task as stmt
+import cbt_core as core
+# Shared helpers live in /cbt_core.py (one definition for every family). Re-exported
+# here so `cbtl.exc`, `cbtl.nln`, ... keep working for existing callers.
+from cbt_core import exc, inh, nln, bg_nln, no_autapse, match_input_channels  # noqa: F401
 import config_script as _rootcfg
 import loop_init as _loop_init
 _FAMILY = Path(__file__).resolve().parent.name
 
 
-def exc(w):
-    return stmt.exc(w)
-
-
-def inh(w):
-    return stmt.inh(w)
-
-
-def nln(x):
-    return stmt.nln(x)
-
-
-def bg_nln(x, b):
-    return stmt.bg_nln(x, b)
-    #return sigmoid(4*(x-1+b))
-    #return jnp.maximum(0, tanh(b*2*x))
-
 def bg_nln_inh(x, b):
     return stmt.bg_nln_inh(x, b)
     #return sigmoid(4*(x-1+b))
     #return jnp.maximum(0, tanh(b*2*x))
-
-
-def no_autapse(m):
-    """Zero the diagonal of a within-population recurrent weight matrix.
-
-    Autapses (a unit synapsing onto itself) are prohibited, so every square
-    same-population recurrence has its self-connection (diagonal) forced to 0.
-    Applied after the sign/exc-inh transform so the effective self-weight is
-    exactly zero regardless of the stored parameter.
-    """
-    return m * (1.0 - jnp.eye(m.shape[0], dtype=m.dtype))
-
-
-def match_input_channels(inputs, params):
-    """Zero-pad cue input channels to match the model's cue→cortex width.
-
-    Tasks that emit fewer cue channels than the model expects (e.g. a 1-channel
-    STMT cue fed to a model trained with an extra Pavlovian-cue channel) are
-    padded with zeros — the missing cues are simply treated as absent.
-    """
-    n_expected = params["B_cue_cU"].shape[1]
-    n_have = inputs.shape[-1]
-    if n_have >= n_expected:
-        return inputs
-    pad = jnp.zeros(inputs.shape[:-1] + (n_expected - n_have,), dtype=inputs.dtype)
-    return jnp.concatenate([inputs, pad], axis=-1)
 
 
 # Canonical state tuple order used across CBT loop code.
@@ -692,125 +653,23 @@ def rnn_func(params, config, batch_inputs, opto_stim, rng_keys):
     return ys, pka_d1, pka_d2, gpe, xs, DEAD_AREA_SKIP_INDICES
 
 
+# Evaluation / analysis helpers: shared implementations in cbt_core, bound to this
+# family's batched_rnn and STATE_AREA_ORDER so the call signatures are unchanged.
 def evaluate(params, config, all_inputs, noise_std=None, n_seeds=8):
-    all_ys = []
-    all_xs = []
-    all_as = []
-
-    eval_config = dict(config)
-    if noise_std is not None:
-        eval_config["noise_std"] = noise_std
-
-    n_d1 = params["J_d1"].shape[0]
-    n_d2 = params["J_d2"].shape[0]
-    batch_stim = jnp.zeros((all_inputs.shape[0], all_inputs.shape[1], n_d1 + n_d2))
-
-    for seed in range(n_seeds):
-        rng_key = jr.PRNGKey(seed)
-        rng_key, action_key = jr.split(rng_key)
-        batch_rng_keys = jr.split(rng_key, all_inputs.shape[0])
-        ys, xs = batched_rnn(params, eval_config, all_inputs, batch_stim, batch_rng_keys)
-        actions = jr.bernoulli(action_key, p=ys).astype(ys.dtype)
-        all_ys.append(ys)
-        all_xs.append(xs)
-        all_as.append(actions)
-
-    all_ys = jnp.stack(all_ys)
-    all_xs = [jnp.stack(parts) for parts in zip(*all_xs)]
-    all_as = jnp.stack(all_as)
-    return all_ys, all_xs, all_as
+    return core.evaluate(batched_rnn, params, config, all_inputs, noise_std, n_seeds)
 
 
 def get_brain_area(brain_area, xs, zs=None):
-    """Return the state array for ``brain_area``.
-
-    ``zs`` is accepted for backward compatibility with older call sites that
-    passed a separate neuromodulator-state tuple; the current model packs all
-    states (including PKA excitability and Medulla) into ``xs``, so ``zs`` is
-    ignored.
-    """
-    return xs[STATE_AREA_ORDER.index(brain_area)]
+    """Return the state array for ``brain_area``. ``zs`` is ignored (legacy call sites)."""
+    return core.get_brain_area(brain_area, xs, STATE_AREA_ORDER)
 
 
-def get_response_times_opto(ys, cue_start=0, dt=0.01, threshold=0.5, exclude_nan=True, rng_key=None):
-    """First-crossing response times for opto-format outputs.
-
-    Args:
-        ys: array of shape (n_seeds, T, 1) or (n_seeds, T).
-        cue_start: timestep to start looking for a response.
-        dt: timestep duration in seconds.
-        threshold: output threshold counted as a response.
-        exclude_nan: if True, drop trials with no response; otherwise keep NaN.
-        rng_key: if provided, sample Bernoulli actions from ``ys`` (treated as
-            probabilities) before thresholding. The network is a stochastic
-            policy whose probability output rarely exceeds 0.5 deterministically,
-            so thresholding the raw probabilities yields empty CDFs. If None,
-            threshold raw values directly (legacy behavior).
-
-    Returns:
-        1-D array of response times (seconds) when exclude_nan, else (n_seeds,).
-    """
-    if ys.ndim == 3:
-        ys = ys[..., 0]
-    if rng_key is not None:
-        signal = jr.bernoulli(rng_key, p=jnp.clip(ys, 0.0, 1.0)).astype(ys.dtype)
-    else:
-        signal = ys
-    post = signal[:, cue_start:]
-    crossed = post > threshold
-    has_resp = jnp.any(crossed, axis=1)
-    first_idx = jnp.argmax(crossed, axis=1)
-    rts = jnp.where(has_resp, first_idx.astype(jnp.float32) * dt, jnp.nan)
-    if exclude_nan:
-        return rts[~jnp.isnan(rts)]
-    return rts
+get_response_times_opto = core.get_response_times_opto
 
 
 def get_d1_d2_ratio(all_xs, t_start, t_end, avg_time=True, remove_outliers=False):
-    """D1 minus D2 mean activity over a time window.
-
-    Args:
-        all_xs: state list/tuple of arrays shaped (n_seeds, n_conditions, T, N).
-        t_start, t_end: time-window bounds (timesteps).
-        avg_time: if True, average over the window -> (n_seeds, n_conditions).
-        remove_outliers: if True, NaN out per-condition outliers (z > 3).
-
-    Returns:
-        (n_seeds, n_conditions[, win]) array of D1-D2 activity differences.
-    """
-    d1 = get_brain_area("D1", all_xs)
-    d2 = get_brain_area("D2", all_xs)
-    d1m = jnp.mean(d1[..., t_start:t_end, :], axis=-1)
-    d2m = jnp.mean(d2[..., t_start:t_end, :], axis=-1)
-    ratio = d1m - d2m
-    if avg_time:
-        ratio = jnp.mean(ratio, axis=-1)
-    if remove_outliers:
-        z = jnp.abs((ratio - jnp.nanmean(ratio)) / (jnp.nanstd(ratio) + 1e-8))
-        ratio = jnp.where(z > 3, jnp.nan, ratio)
-    return ratio
+    return core.get_d1_d2_ratio(all_xs, t_start, t_end, STATE_AREA_ORDER, avg_time, remove_outliers)
 
 
 def get_slope(all_xs, t_start, t_end, avg_neurons=True, remove_outliers=False):
-    """Least-squares ramp slope of cortical activity over a time window.
-
-    Returns:
-        (n_seeds, n_conditions) array of slopes (per unit time-step).
-    """
-    cortex = get_brain_area("Cortex", all_xs)  # (n_seeds, n_conditions, T, N)
-    seg = cortex[..., t_start:t_end, :]
-    if avg_neurons:
-        seg = jnp.mean(seg, axis=-1)  # (n_seeds, n_conditions, win)
-    else:
-        seg = jnp.mean(seg, axis=-1)
-    win = seg.shape[-1]
-    t = jnp.arange(win, dtype=seg.dtype)
-    t_centered = t - jnp.mean(t)
-    y_centered = seg - jnp.mean(seg, axis=-1, keepdims=True)
-    num = jnp.sum(t_centered * y_centered, axis=-1)
-    den = jnp.sum(t_centered ** 2)
-    slope = num / (den + 1e-8)
-    if remove_outliers:
-        z = jnp.abs((slope - jnp.nanmean(slope)) / (jnp.nanstd(slope) + 1e-8))
-        slope = jnp.where(z > 3, jnp.nan, slope)
-    return slope
+    return core.get_slope(all_xs, t_start, t_end, STATE_AREA_ORDER, avg_neurons, remove_outliers)

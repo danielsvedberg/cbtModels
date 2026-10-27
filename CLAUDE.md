@@ -104,6 +104,11 @@ hi window sits at the output's own first crossing (clamped ≥ cue+delay), late 
 free, and `in_window_weight` is not applied. Under it, fixed-window separation understates
 a valid late response; judge by `resp_frac`, latency distribution and opto.
 
+**Family refactor in progress** (same log): the families are being rebuilt as one core
+(noSCnoSTN → `cbt_simple`) plus STN/SC modules (`cbt_STN`, `cbt_SC_STN`). Shared helpers
+(`exc`/`inh`/`nln`/`bg_nln`, `no_autapse`, freeze, evaluate/analysis) now live once in
+**`/cbt_core.py`**; edit them there, not in a family's `cbt_rnn.py`.
+
 ## Config
 
 `/config_script.py` is the single source for all families — `config_script.for_family(name)`
@@ -133,9 +138,10 @@ This model has a degenerate solution for almost every metric. Several have been 
 
 ## Verified traps
 
-- **`bg_nln` is dead code** in noSCnoSTN — defined at `cbt_rnn.py:38`, never called. Comments
-  at lines 370/552/573/743/748 still describe it. PKA reaches the striatum only as gains
-  `gain_e = pka + 0.5` and `gain_i = 1.5 − pka` on the SPN input currents.
+- **`bg_nln` is not used by the core circuit** — it is defined in `cbt_core.py` (kept by
+  user decision) but no core area calls it. PKA reaches the striatum only as gains
+  `gain_e = pka + 0.5` and `gain_i = 1.5 − pka` on the SPN input currents (`cbt_core._striatum`;
+  note the D2 pair is swapped, see the change log).
   **In this repo comments outlive the code they describe — check a function is called.**
 - **PKA fixed point.** With mass-action and no per-step squash, `pka* = P/(K + P)` where
   `K = tau_rise/tau_fall × pka_max` (= 0.1 at 50/500). Half-max at `P = K`; `pka* = 0.5`
@@ -181,6 +187,30 @@ This model has a degenerate solution for almost every metric. Several have been 
 Each test is a **self-contained folder** `<family>/tests/<test_name>/` holding its script, its
 plots, and a docstring explaining what it tests and what the answer was. Never write test plots
 to the family root or a shared `plots/` directory.
+
+**Family folder layout** (2026-10-27):
+
+| folder | holds |
+|---|---|
+| `<family>/` root | the model (`cbt_rnn.py`, `*_rnn.py`), `plotting_functions.py`, orchestrators (`run_pipeline.py`), analysis / sweep / diagnostic scripts |
+| `training/` | `train_*.py`, `training_script.py`, `pretrain_*.py`, `long_run.py`, `pci_train.py` |
+| `testing/` | `testing_script.py`, `test_*.py`, `opto_script.py`, `lesion_tests.py`, `eval_*.py` |
+| `params/` | trained-params pkls (`cfg.params_dir`) |
+| `data/` | loose result data `.json` (e.g. `seed_stability_data.json`; `cfg.data_dir`) |
+| `logs/` | captured stdout `.log` — redirect new runs here, e.g. `python training/train_supervised_thal.py > logs/x.log` (`cfg.logs_dir`) |
+| `tests/<name>/` | self-contained experiments (script + plots + answer) |
+| `runs/<name>/` | self-contained training runs |
+
+Run training/testing scripts from the family dir as `python training/train_supervised_thal.py`.
+Each starts with a bootstrap that puts the family root, `training/` and `testing/` on
+`sys.path`, so `import cbt_rnn`, `import testing_script` etc. work. Any **new** script placed in
+`training/` or `testing/` needs that bootstrap too. Scripts elsewhere that import a moved script
+must add those two folders to their path, as `run_pipeline.py` and the `tests/` scripts do.
+
+**Trained params live in `<family>/params/`**, never the family root. Use the config helpers
+(`cfg.params_dir`, `cfg.params_path()`, `cfg.params_path().with_name("x.pkl")`), which all
+resolve there and create the folder. A test's or run's own pkls stay inside its
+`tests/<name>/` or `runs/<name>/` folder.
 
 ## The `docs/` folder — read, but check currency first
 

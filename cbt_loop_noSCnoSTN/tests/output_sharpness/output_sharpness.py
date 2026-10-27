@@ -49,7 +49,7 @@ BUNDLE = "params_shaped.pkl"
 
 
 def main():
-    d = pickle.load(open(FAMILY_DIR / BUNDLE, "rb"))
+    d = pickle.load(open(FAMILY_DIR / "params" / BUNDLE, "rb"))
     p, c = d["params"], d["config"]
     ncue = int(np.asarray(p["B_cue_cU"]).shape[1])
     tc = cfg.TASK_CONFIG

@@ -28,7 +28,7 @@ GAINS = {"m_d1": 1.1363, "m_d2": -1.5368, "m_a1": -3.4095, "m_a2": 0.0080}
 RUNTIME = {"da_release": 0.2982, "ado_release": 1.1363, "pin_ado": 0.093,
            "stri_cross_scale": 0.162, "stri_tonic": 0.220}
 BREAKTHROUGH_SEP = 0.20      # winners land ~0.45, collapses at exactly 0.000 -- wide margin
-DATA = pathlib.Path(__file__).with_name("seed_stability_data.json")
+DATA = pathlib.Path(__file__).resolve().parent / "data" / "seed_stability_data.json"
 
 
 def _load():
@@ -183,6 +183,6 @@ if __name__ == "__main__":
     ap.add_argument("--data", type=str, default=None, help="write to an alternate data file")
     a = ap.parse_args()
     if a.data:
-        DATA = pathlib.Path(__file__).with_name(a.data)
+        DATA = pathlib.Path(__file__).resolve().parent / "data" / a.data
         globals()["DATA"] = DATA
     main(a.start, a.n, a.iters, a.force, a.lr, a.wt, a.target_lo)

@@ -67,8 +67,8 @@ def evaluate(path):
     return out
 
 
-paths = sorted(glob.glob(str(_root / "cbt_loop_noSCnoSTN" / "params_supervised_thal_seed*.pkl")))
-paths.append(str(_root / "cbt_loop_noSCnoSTN" / "params_supervised_thal.pkl"))   # positive control
+paths = sorted(glob.glob(str(_root / "cbt_loop_noSCnoSTN" / "params" / "params_supervised_thal_seed*.pkl")))
+paths.append(str(_root / "cbt_loop_noSCnoSTN" / "params" / "params_supervised_thal.pkl"))   # positive control
 print(f"threshold {THR}, cue onsets {ONSETS[0]}-{ONSETS[-1]} (t_start spans "
       f"{int(np.min(t['t_start']))}-{int(np.max(t['t_start']))}), {NS} seeds each\n")
 print(f"{'run':<24} {'slope':>7} {'r':>7} {'latency':>9} {'sd':>6} {'cross%':>7} {'hi@cue':>7} "

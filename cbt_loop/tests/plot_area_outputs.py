@@ -18,7 +18,7 @@ import cbt_rnn as cbtl, config_script as C, self_timed_movement_task as stmt
 OUT = pathlib.Path(__file__).resolve().parent/"plots"/f"area_outputs_{FAM}.png"
 cfg = C.for_family(FAM); t = cfg.TASK_CONFIG; A = cbtl.STATE_AREA_ORDER
 inputs,_,_ = stmt.self_timed_movement_task(T_start=t["t_start"],T_cue=t["t_cue"],T_wait=t["t_wait"],T_movement=t["t_movement"],T=t["t_total"])
-b = pkl.load(open(ROOT/FAM/BUNDLE,"rb")); p,conf = b["params"],b["config"]
+b = pkl.load(open(ROOT/FAM/"params"/BUNDLE,"rb")); p,conf = b["params"],b["config"]
 inp = cbtl.match_input_channels(inputs,p); B=inp.shape[0]; nd1=p["J_d1"].shape[0]; nd2=p["J_d2"].shape[0]
 ys,xs = cbtl.batched_rnn(p,dict(conf,noise_std=0.0),inp,jnp.zeros((B,inp.shape[1],nd1+nd2)),jr.split(jr.PRNGKey(0),B))
 ys = np.asarray(ys[...,0]); ts = np.asarray(t["t_start"])

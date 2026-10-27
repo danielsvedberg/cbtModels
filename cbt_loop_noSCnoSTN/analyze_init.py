@@ -36,7 +36,7 @@ def build_features():
     cfg = cs.for_family("cbt_loop_noSCnoSTN"); t = cfg.TASK_CONFIG
     inp, _, _ = stmt.self_timed_movement_task(t["t_start"][:16], t["t_cue"], t["t_wait"],
                                               t["t_movement"], t["t_total"])
-    rows = sorted(json.load(open(pathlib.Path(__file__).with_name("seed_stability_data.json"))),
+    rows = sorted(json.load(open(pathlib.Path(__file__).resolve().parent / "data" / "seed_stability_data.json")),
                   key=lambda r: r["seed"])
     eff = lambda w: np.clip(np.tanh(np.asarray(w)), 0, None)
     X, names, y = [], None, []

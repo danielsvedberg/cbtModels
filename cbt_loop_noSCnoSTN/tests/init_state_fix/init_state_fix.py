@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 HERE = pathlib.Path(__file__).resolve().parent
 FAMILY_DIR = HERE.parents[1]
 _root = next(p for p in HERE.parents if (p / "config_script.py").exists())
-for _p in (str(FAMILY_DIR), str(_root)):
+for _p in (str(FAMILY_DIR / "training"), str(FAMILY_DIR / "testing"), str(FAMILY_DIR), str(_root)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 import cbt_rnn as cbtl

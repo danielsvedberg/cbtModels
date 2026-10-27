@@ -34,7 +34,7 @@ SWAPS = {
     "J_d1":        ["J_d1"],                             # negative control (weak r)
     "ALL_LOOP":    list(loop_init.LOOP_BLOCKS),          # positive control
 }
-DATA = pathlib.Path(__file__).with_name("block_swap_data.json")
+DATA = pathlib.Path(__file__).resolve().parent / "data" / "block_swap_data.json"
 
 
 def main(donor, recipient, iters, which):

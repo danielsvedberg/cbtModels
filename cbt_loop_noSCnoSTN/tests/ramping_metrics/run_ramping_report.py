@@ -30,7 +30,7 @@ import config_script as cs; cfg = cs.for_family("cbt_loop_noSCnoSTN")
 import cbt_rnn as c, ramping_metrics as rm
 
 src = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith("--") \
-      else _root / "cbt_loop_noSCnoSTN" / "params_supervised_thal.pkl"
+      else _root / "cbt_loop_noSCnoSTN" / "params" / "params_supervised_thal.pkl"
 SINGLE = "--single" in sys.argv
 with src.open("rb") as f: b = pickle.load(f)
 params, config = (b["params"], dict(b["config"])) if isinstance(b, dict) and "params" in b else (b, None)

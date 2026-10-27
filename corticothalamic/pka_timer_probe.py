@@ -41,7 +41,7 @@ A = cbtl.STATE_AREA_ORDER
 
 def load():
     if BUNDLE:
-        with open(os.path.join(ROOT, FAM, BUNDLE), "rb") as f:
+        with open(os.path.join(ROOT, FAM, "params", BUNDLE), "rb") as f:
             b = pkl.load(f)
         print(f"loaded {BUNDLE}")
         return b["params"], b["config"]

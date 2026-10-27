@@ -50,7 +50,7 @@ def grad_features(seed):
 
 
 def main():
-    src = pathlib.Path(__file__).with_name("seed_stability_OLDPACER.json")
+    src = pathlib.Path(__file__).resolve().parent / "data" / "seed_stability_OLDPACER.json"
     rows = sorted(json.load(open(src)), key=lambda r: r["seed"])
     X, names, y, W = [], None, [], []
     eff = lambda w: np.clip(np.tanh(np.asarray(w)), 0, None)

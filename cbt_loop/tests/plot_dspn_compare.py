@@ -11,7 +11,7 @@ import cbt_rnn as cbtl, config_script as C, self_timed_movement_task as stmt
 OUT = pathlib.Path(__file__).resolve().parent/"plots"/"dspn_compare.png"
 cfg=C.for_family("cbt_loop"); t=cfg.TASK_CONFIG; A=cbtl.STATE_AREA_ORDER
 inputs,_,_=stmt.self_timed_movement_task(T_start=t["t_start"],T_cue=t["t_cue"],T_wait=t["t_wait"],T_movement=t["t_movement"],T=t["t_total"])
-models=[("pka_d10=0.1 (self-timing)","/tmp/claude-1000/-home-dsvedberg-Documents-CodeVault-cbtModels/02953a08-a57a-4eda-b9df-a53339ae0f03/scratchpad/params_shaped_pka01.pkl"),("pka_d10=0.25 (retrained)","cbt_loop/params_shaped.pkl")]
+models=[("pka_d10=0.1 (self-timing)","/tmp/claude-1000/-home-dsvedberg-Documents-CodeVault-cbtModels/02953a08-a57a-4eda-b9df-a53339ae0f03/scratchpad/params_shaped_pka01.pkl"),("pka_d10=0.25 (retrained)","cbt_loop/params/params_shaped.pkl")]
 ts=np.asarray(t["t_start"]); order=np.argsort(ts); pick=order[np.linspace(0,len(ts)-1,6).astype(int)]
 cmap=cm.viridis; norm=Normalize(ts.min(),ts.max())
 fig,ax=plt.subplots(2,2,figsize=(13,8),sharex=True)

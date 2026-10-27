@@ -169,7 +169,7 @@ def main():
     # --- free runs -------------------------------------------------------------------------
     free = {"init weights": _traces(params, config, T_FREE)}
     for name in ("params_pavlovian.pkl", "params_shaped.pkl"):
-        f = FAMILY_DIR / name
+        f = FAMILY_DIR / "params" / name
         if not f.exists():
             continue
         try:

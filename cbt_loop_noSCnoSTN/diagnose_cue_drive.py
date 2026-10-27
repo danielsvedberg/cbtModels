@@ -25,7 +25,7 @@ import self_timed_movement_task as stmt
 cfg = _config_script.for_family("cbt_loop_noSCnoSTN")
 HERE = pathlib.Path(__file__).resolve().parent
 PLOTS = HERE / "plots"
-MODEL = HERE / "params_pavlovian.pkl"   # the naive baseline (0.070 ceiling)
+MODEL = HERE / "params" / "params_pavlovian.pkl"   # the naive baseline (0.070 ceiling)
 AREAS = list(cbtl.STATE_AREA_ORDER)
 
 

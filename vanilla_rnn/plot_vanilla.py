@@ -431,7 +431,7 @@ def load_default_eval(n_seeds=4, noise_std=0.0):
     """
     Convenience loader using the same task config as train_vanilla.py.
     """
-    params_path = Path(__file__).resolve().parent / "params_vanilla.pkl"
+    params_path = Path(__file__).resolve().parent / "params" / "params_vanilla.pkl"
     if not params_path.exists():
         raise FileNotFoundError(f"Missing {params_path}. Run train_vanilla.py first.")
 

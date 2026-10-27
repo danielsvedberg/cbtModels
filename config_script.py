@@ -679,6 +679,11 @@ _FAMILY_FILENAMES = {
 }
 
 
+def params_dir(family):
+    """Folder holding a family's trained-params pkls: <family dir>/params."""
+    return FAMILY_DIRS[family] / "params"
+
+
 def _filenames_for(family):
     return _FAMILY_FILENAMES.get(family, _CBT_FILENAMES)
 
@@ -766,13 +771,21 @@ def for_family(family):
     ns.SHAPED_PARAMS_FILENAME = fn["shaped"]
     ns.PRETRAIN_PARAMS_FILENAME = fn["pretrain"]
 
-    # --- path helpers (resolve to the family directory) ---
-    ns.params_path = lambda: d / fn["params"]
-    ns.pavlovian_params_path = lambda: d / fn["pavlovian"]
-    ns.hybrid_params_path = lambda: d / fn["hybrid"]
-    ns.hybrid_scratch_params_path = lambda: d / fn["hybrid_scratch"]
-    ns.shaped_params_path = lambda: d / fn["shaped"]
-    ns.pretrain_params_path = lambda: d / fn["pretrain"]
+    # --- path helpers: every trained-params pkl lives in <family>/params/ ---
+    # (2026-10-27). Callers that derive a sibling file via .with_name() or .parent / name
+    # land in the same folder. Self-contained test/run folders keep their own pkls.
+    pd = params_dir(family)
+    pd.mkdir(parents=True, exist_ok=True)
+    ns.params_dir = pd
+    # Loose result data (.json) and captured stdout (.log) go in their own folders too.
+    ns.data_dir = d / "data"
+    ns.logs_dir = d / "logs"
+    ns.params_path = lambda: pd / fn["params"]
+    ns.pavlovian_params_path = lambda: pd / fn["pavlovian"]
+    ns.hybrid_params_path = lambda: pd / fn["hybrid"]
+    ns.hybrid_scratch_params_path = lambda: pd / fn["hybrid_scratch"]
+    ns.shaped_params_path = lambda: pd / fn["shaped"]
+    ns.pretrain_params_path = lambda: pd / fn["pretrain"]
 
     # --- plotting / analysis aliases ---
     ns.default_config = {"noise_std": ns.RNN_CONFIG.get("noise_std", 0.01), "dt": TASK_CONFIG["dt_ms"]}

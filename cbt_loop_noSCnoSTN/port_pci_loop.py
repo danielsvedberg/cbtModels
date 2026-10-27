@@ -30,8 +30,8 @@ import loop_init
 
 cfg = _config_script.for_family("cbt_loop_noSCnoSTN")
 
-SRC = _root / "corticothalamic" / "params_pci.pkl"
-OUT = pathlib.Path(__file__).resolve().parent / "params_pci_loop_init.pkl"
+SRC = _root / "corticothalamic" / "params" / "params_pci.pkl"
+OUT = pathlib.Path(__file__).resolve().parent / "params" / "params_pci_loop_init.pkl"
 
 # self-recurrence blocks whose diagonal the forward zeros (no_autapse)
 _DIAG = ("J_cU", "J_cL", "J_c_ii", "J_t_ee", "J_t_ii")

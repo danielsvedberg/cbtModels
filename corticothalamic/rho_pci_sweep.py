@@ -15,6 +15,8 @@ import numpy as np
 import jax.numpy as jnp
 import jax.random as jr
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent / "training"))  # pci_train moved there
 import pci_train as P
 
 HERE = Path(__file__).resolve().parent

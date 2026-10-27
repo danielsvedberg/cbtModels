@@ -1,4 +1,10 @@
 """Run the full pipeline: Pavlovian pretraining, self-timed fine-tuning, then testing."""
+# training/ and testing/ hold the scripts imported below (moved there 2026-10-27).
+import sys as _sys, pathlib as _pl
+_FAMILY_ROOT = _pl.Path(__file__).resolve().parent
+for _d in (_FAMILY_ROOT / "testing", _FAMILY_ROOT / "training", _FAMILY_ROOT):
+    if str(_d) not in _sys.path:
+        _sys.path.insert(0, str(_d))
 
 import time
 

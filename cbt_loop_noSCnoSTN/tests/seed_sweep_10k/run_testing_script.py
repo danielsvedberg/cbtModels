@@ -21,7 +21,7 @@ import sys, pickle, pathlib, shutil
 _here = pathlib.Path(__file__).resolve().parent
 _root = next(p for p in _here.parents if (p / "config_script.py").exists())
 _fam = _root / "cbt_loop_noSCnoSTN"
-sys.path[:0] = [str(_root), str(_fam)]
+sys.path[:0] = [str(_root), str(_fam), str(_fam / "testing"), str(_fam / "training")]
 
 import jax.random as jr
 import config_script as _cs

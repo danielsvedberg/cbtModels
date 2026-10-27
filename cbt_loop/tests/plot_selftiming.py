@@ -26,7 +26,7 @@ BUNDLE = sys.argv[1] if len(sys.argv) > 1 else "params_shaped.pkl"
 OUT = pathlib.Path(__file__).resolve().parent / "plots" / "selftiming.png"
 cfg = C.for_family("cbt_loop"); t = cfg.TASK_CONFIG
 
-with open(ROOT / "cbt_loop" / BUNDLE, "rb") as f:
+with open(ROOT / "cbt_loop" / "params" / BUNDLE, "rb") as f:
     b = pkl.load(f)
 params, config = b["params"], b["config"]
 
