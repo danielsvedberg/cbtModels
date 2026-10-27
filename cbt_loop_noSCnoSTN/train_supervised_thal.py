@@ -63,7 +63,13 @@ def main(num_iters=None, delay=None, loss_type=None, seed=None, pin_ado="keep", 
     # Rebalance the 95/5 baseline/plateau split: supervised_loss treats the mask as a
     # per-timestep weight, so scaling in-window steps by (1-f)/f removes the trivial
     # constant-output basin at 0.2750. See config_script SUPERVISED_THAL_CONFIG.
-    w = float(sup.get("in_window_weight", 1.0))
+    selfref = bool(sup.get("self_referential", False))
+    # Under the self-referential target the fixed plateau is only the earliest allowed
+    # move, so up-weighting it would re-pin timing to cue+delay. Skip the weighting.
+    w = 1.0 if selfref else float(sup.get("in_window_weight", 1.0))
+    if selfref:
+        print(f"[supervised-thal] SELF-REFERENTIAL target (threshold "
+              f"{sup.get('selfref_threshold', 0.5)}); in_window_weight not applied")
     if w != 1.0:
         import numpy as _np
         _hi = _np.asarray(targets)[..., 0] > (sup["target_lo"] + sup["target_hi"]) / 2
@@ -107,6 +113,8 @@ def main(num_iters=None, delay=None, loss_type=None, seed=None, pin_ado="keep", 
         dead_area_coef=rl["dead_area_coef"], dead_area_min=rl["dead_area_min"],
         dead_proj_coef=rl["dead_proj_coef"], dead_proj_floor=rl["dead_proj_floor"],
         rise_coef=sup["rise_coef"], rise_window=sup["rise_window"],
+        self_referential=selfref,
+        selfref_threshold=sup.get("selfref_threshold", 0.5),
     )
     out_path = cfg.params_path().with_name(
         f"params_supervised_thal{('_' + tag) if tag else ''}.pkl")

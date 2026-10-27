@@ -215,7 +215,18 @@ SUPERVISED_THAL_CONFIG = {
     # so the clip discards the learned value. Frozen, every trial starts from the
     # CBT_INIT_STATE values and the network must produce its dynamics from the weights.
     "freeze_init_states": True,
-    "loss_type": "mse",    # soft targets: squared error, not BCE (whose min is a nonzero floor)
+    # SELF-REFERENTIAL TARGET (2026-10-27, docs/CHANGELOG_opto_recovery.md). Ported from
+    # cbtModel baseline 12a8ade, the only version that reproduced the D1/D2 opto timing
+    # shifts. The hi window is placed at the output's own first crossing of
+    # selfref_threshold, clamped to no earlier than cue+delay: early moves are penalized,
+    # LATE MOVES ARE FREE, never-moving costs one window. The fixed plateau punished late
+    # and early alike (19x), which trains timing to resist exactly the shift opto should
+    # cause. While True, in_window_weight is NOT applied (it weights the fixed window, which
+    # no longer is the target) and rise_coef should stay 0. Set False to restore the fixed
+    # plateau.
+    "self_referential": True,
+    "selfref_threshold": 0.5,
+    "loss_type": "mse",   # soft targets: squared error, not BCE (whose min is a nonzero floor)
     "num_iters": 10000,
     "log_interval": 200,
 }

@@ -1031,6 +1031,8 @@ def supervised_loss(
     dead_proj_floor=0.1,
     rise_coef=0.0,
     rise_window=25,
+    self_referential=False,
+    selfref_threshold=0.5,
 ):
     """Dense supervised loss: match the network output to the target trajectory.
 
@@ -1049,6 +1051,15 @@ def supervised_loss(
     ``reinforce_loss`` (all default to off), so the same priors can be carried
     into supervised training. ``rng_keys`` are forwarded to ``rnn_func`` so
     state noise still regularizes training.
+
+    self_referential: if True, ``batch_targets`` only supplies the earliest allowed
+        movement time (its first in-window step, ``t_open``), the band (min/max) and the
+        window length. The hi window is then re-placed at the output's OWN first crossing
+        of ``selfref_threshold``, clamped to no earlier than ``t_open`` -- the cbtModel
+        (baseline 12a8ade) objective. Early moves are penalized, late moves are free, and a
+        trial that never crosses gets its window at ``t_open``. The placement is computed
+        on stop_gradient(ys), so it adds no backward cost (measured: 536 vs 535 ms/step).
+        See docs/CHANGELOG_opto_recovery.md.
 
     Returns ``(total_loss, aux)`` where ``aux`` exposes the supervised loss and
     output-matching diagnostics.
@@ -1076,6 +1087,26 @@ def supervised_loss(
         raise ValueError("supervised_loss requires batch_targets (the target trajectory).")
     target_2d = batch_targets[..., 0] if batch_targets.ndim == 3 else batch_targets
     target_2d = target_2d.astype(probs.dtype)
+    # Diagnostics (accuracy, in/off-window rates) stay scored against the FIXED target, so
+    # separation remains "high at cue+delay" and comparable with fixed-plateau runs.
+    fixed_target_2d = target_2d
+
+    if self_referential:
+        t_lo = jnp.min(target_2d)
+        t_hi = jnp.max(target_2d)
+        in_fixed = target_2d > 0.5 * (t_lo + t_hi)
+        t_open = jnp.argmax(in_fixed, axis=1)                     # earliest allowed move
+        hold = jnp.sum(in_fixed, axis=1)                          # window length per trial
+        t_idx = jnp.arange(T)[None, :]
+        crossed = lax.stop_gradient(probs) >= selfref_threshold
+        first = jnp.argmax(crossed, axis=1)                       # 0 if it never crosses
+        # As in cbtModel: an early (or absent) crossing puts the window at t_open.
+        first = jnp.where(first < t_open, t_open, first)
+        on = (t_idx >= first[:, None]) & (t_idx < first[:, None] + hold[:, None])
+        target_2d = jnp.where(on, t_hi, t_lo)
+        resp_frac = jnp.mean(jnp.any(crossed & (t_idx >= t_open[:, None]), axis=1))
+    else:
+        resp_frac = jnp.array(0.0, dtype=probs.dtype)
 
     mask_sum = jnp.sum(mask_2d) + 1e-8
     if loss_type == "bce":
@@ -1091,9 +1122,9 @@ def supervised_loss(
 
     # Output-matching diagnostics (no effect on the gradient).
     valid = mask_2d > 0.0
-    accuracy = jnp.sum(((probs > 0.5) == (target_2d > 0.5)) * mask_2d) / mask_sum
-    in_window = valid & (target_2d > 0.5)
-    off_window = valid & (target_2d <= 0.5)
+    accuracy = jnp.sum(((probs > 0.5) == (fixed_target_2d > 0.5)) * mask_2d) / mask_sum
+    in_window = valid & (fixed_target_2d > 0.5)
+    off_window = valid & (fixed_target_2d <= 0.5)
     in_rate = jnp.sum(probs * in_window) / (jnp.sum(in_window) + 1e-8)
     off_rate = jnp.sum(probs * off_window) / (jnp.sum(off_window) + 1e-8)
 
@@ -1207,6 +1238,7 @@ def supervised_loss(
         "dead_proj_loss": dead_proj_loss,
         "rise_loss": rise_loss,
         "observed_rise": observed_rise,
+        "resp_frac": resp_frac,
     }
     return total_loss, aux
 
@@ -1239,6 +1271,8 @@ def fit_rnn_supervised(
     dead_proj_floor=0.1,
     rise_coef=0.0,
     rise_window=25,
+    self_referential=False,
+    selfref_threshold=0.5,
 ):
     """Train an RNN by direct supervision against the task target trajectory.
 
@@ -1288,6 +1322,8 @@ def fit_rnn_supervised(
                 dead_proj_floor,
                 rise_coef,
                 rise_window,
+                self_referential,
+                selfref_threshold,
             ),
             has_aux=True,
         )(cur_params)
@@ -1308,6 +1344,7 @@ def fit_rnn_supervised(
             aux["gpe_floor_loss"],
             aux["dead_area_loss"],
             aux["dead_proj_loss"],
+            aux["resp_frac"],
         )
 
     losses = []
@@ -1329,6 +1366,7 @@ def fit_rnn_supervised(
             gpe_floor_vals,
             dead_area_vals,
             dead_proj_vals,
+            resp_frac_vals,
         ) = lax.scan(
             _step,
             (params, opt_state, rng_key),
@@ -1349,6 +1387,7 @@ def fit_rnn_supervised(
             f"rest_pka: {float(rest_pka_vals[-1]):.4f}, pathway_floor: {float(pathway_floor_vals[-1]):.4f}, "
             f"c_snc_floor: {float(c_snc_floor_vals[-1]):.4f}, gpe_floor: {float(gpe_floor_vals[-1]):.4f}, "
             f"dead_area: {float(dead_area_vals[-1]):.4f}, dead_proj: {float(dead_proj_vals[-1]):.4f}"
+            + (f", resp_frac: {float(resp_frac_vals[-1]):.3f}" if self_referential else "")
         )
 
         if last_loss < best_loss:

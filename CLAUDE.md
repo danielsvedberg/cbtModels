@@ -91,6 +91,19 @@ So: an SNr ramp-up before movement is a **target to reproduce, not a bug to remo
 activity and the thalamic readout seem to be in tension, that tension is the scientific
 point, not an error to engineer away.
 
+## Change log — read before changing the model or objective
+
+**`docs/CHANGELOG_opto_recovery.md`** records every change made to get noSCnoSTN back to
+the D1/D2 opto timing effects that the precursor repo `~/Documents/CodeVault/cbtModel`
+(baseline `12a8ade`) achieved. Each entry gives what changed, why, and what was or was
+not verified. It also holds the ranked cbtModel-vs-noSCnoSTN discrepancy audit — the
+to-do list for that effort. Add an entry there for every further change.
+
+Currently active from it: **`SUPERVISED_THAL_CONFIG["self_referential"] = True`** — the
+hi window sits at the output's own first crossing (clamped ≥ cue+delay), late moves are
+free, and `in_window_weight` is not applied. Under it, fixed-window separation understates
+a valid late response; judge by `resp_frac`, latency distribution and opto.
+
 ## Config
 
 `/config_script.py` is the single source for all families — `config_script.for_family(name)`
@@ -127,9 +140,11 @@ This model has a degenerate solution for almost every metric. Several have been 
 - **PKA fixed point.** With mass-action and no per-step squash, `pka* = P/(K + P)` where
   `K = tau_rise/tau_fall × pka_max` (= 0.1 at 50/500). Half-max at `P = K`; `pka* = 0.5`
   ⟺ `P = 0.1`. A per-step squash destroys the `tau_fall` timescale.
-- **`exc`/`inh` have hard dead zones.** Both are `±clip(tanh(w), 0, None)`: for `w ≤ 0` they
-  return exactly 0 with exactly 0 gradient. Nothing is negative at init (0 of 3650 wrapped
-  weights), so anything dead was put there by training.
+- **`exc`/`inh` are currently `±abs(w)`** (`self_timed_movement_task.py:11`), which has no
+  dead zone. They were `±clip(tanh(w), 0, None)` earlier, which returned exactly 0 with
+  exactly 0 gradient for `w ≤ 0`. Analyses and config comments written under the clip form
+  (e.g. the `m_gain_floor` rationale) may no longer apply. Check the definition before
+  analysing — it has changed several times.
 - **`supervised_loss` clips `ys` to `[1e-7, 1−1e-7]`** before scoring. With the unbounded
   linear readout, any output above 1 is scored as 1 with **zero gradient** — a silent ceiling.
 - **`balanced_target_rho = 1.107` is a DC fix, not a criticality target.** `normalize_loop`
@@ -150,8 +165,9 @@ This model has a degenerate solution for almost every metric. Several have been 
 ## Running experiments
 
 - `train_supervised_thal.py` uses **fixed seeds every run** (`SEED_CONFIG = {task_seed: 13,
-  train_seed: 4}`); repeated runs are the same run, not independent samples. There is no
-  `--seed` flag.
+  train_seed: 4}`); repeated runs are the same run, not independent samples, unless you
+  pass `--seed N` (overrides init + training rng; the task trials stay fixed) and
+  `--tag` so runs don't overwrite each other's pkl.
 - Runs are **chaotic** — a ~1e-9 perturbation flips outcomes — and GPU reductions are
   non-deterministic, so n=1 config comparisons are coin flips. Budget matters more than
   learning rate.
